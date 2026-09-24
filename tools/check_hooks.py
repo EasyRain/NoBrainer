@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """NoBrainer 钩子体检：仓库里注册的每个钩子，在真机日志里到底挂上了没有。
 
-为什么需要它：NoBrainer 大部分钩子是 mod:hook_safe("类名", "方法")。DMF 是先查 _G、
+为什么需要它：NoBrainer 大部分钩子是 mod:hook_safe("类名", "方法")。Darktide Mod Framework 是先查 _G、
 再查 _G.CLASS（游戏自己的类登记表）来解析这个名字的；解析不到就先记成"延迟钩子"，
 等 class() 造出这个类、并且第一次 new 的时候补挂。
 - 类被改名 / 不再登记 → 日志里只有 "needs to be delayed"，永远等不到 "is now available" → 静默失效。
-- 方法被改名 → DMF 会打一条 error（trying to hook function or method that doesn't exist）。
+- 方法被改名 → Darktide Mod Framework 会打一条 error（trying to hook function or method that doesn't exist）。
 两种都能从日志里查出来，所以游戏更新后跑一下这个脚本就知道哪块功能已经废了。
 
 用法：
@@ -134,12 +134,12 @@ def main(argv):
         path_based = mechanism.startswith("module-path:")
         if (name, method) in err_method or name in err_object:
             status = "ERROR"
-            note = "DMF 报错：方法或类不存在"
+            note = "Darktide Mod Framework 报错：方法或类不存在"
         elif (name, method) in applied:
             status = "OK"
             note = "类是在游戏里之后才构造的，延迟后挂上了" if (name, method) in delayed else ""
         elif path_based and method in methods_seen:
-            # 按路径挂的钩子，DMF 打印的"类名"是从全局表里猜的，变量名对不上很正常；
+            # 按路径挂的钩子，Darktide Mod Framework 打印的"类名"是从全局表里猜的，变量名对不上很正常；
             # 只要这个方法确实被挂上了就算通过（路径写错的话日志里根本不会有这条）。
             status = "OK"
             seen = ", ".join(sorted(methods_seen[method]))

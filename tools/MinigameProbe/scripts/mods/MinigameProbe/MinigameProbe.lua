@@ -28,7 +28,7 @@ local CANDIDATE_PATHS = {
     "scripts/extension_systems/minigame/minigames/minigame_servo_skull",
     "scripts/ui/views/scanner_display_view/scanner_display_view",
     "scripts/ui/views/scanner_display_view/minigame_balance_view",
-    -- AuspexHelper（757，NB 的前身）在 2026-03 使用的路径：用它来确认这些入口在当前版本还在不在
+    -- AuspexHelper（757，NoBrainer 的前身）在 2026-03 使用的路径：用它来确认这些入口在当前版本还在不在
     "scripts/ui/views/scanner_display_view/minigame_decode_search_view",
     "scripts/ui/views/scanner_display_view/minigame_decode_symbols_view",
     "scripts/ui/views/scanner_display_view/minigame_drill_view",

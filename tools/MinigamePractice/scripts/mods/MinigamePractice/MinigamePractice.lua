@@ -1,7 +1,7 @@
 -- MinigamePractice — 让 NoBrainer 可以在任何地方被测试的练习台（真·逻辑类，不是模拟类）。
 --
 -- 为什么需要它：NoBrainer 的小游戏逻辑只在任务里跑，进局测试很慢；AuspexHelper 那类练习模式用的是
--- 它自己的 Preview* 模拟类，驱动不了 NoBrainer（NB 钩的是游戏的真逻辑类）。
+-- 它自己的 Preview* 模拟类，驱动不了 NoBrainer（它钩的是游戏的真逻辑类）。
 --
 -- 做法（全部 pcall 包住，任何一个环节失败都只会写日志，不会把游戏搞崩）：
 --   1. 用真类建一个实例：MinigameBalance:new(unit, is_server, seed)（签名来自 MinigameProbe 的反射：
@@ -9,8 +9,8 @@
 --   2. 我们扮演服务器：每帧 mg:update(dt, t) 步进游戏自己的物理，然后把位置 set_position 回去
 --      —— 这正是真机里"服务器 RPC 把位置发给你"的那条路，NoBrainer 的 set_position 钩子就在这里；
 --   3. 每 0.5 秒喂一次 on_axis_set(t, x, y)（相当于你推摇杆），让位置真的在动；
---   4. 可选注入：定时把 NB 的 estimate_time 往前推一点，制造"样本时间没前进"的收据（修复①的对象）；
---      以及直接调用 NB 暴露的 mod._bal_predictive_correction(true) 来压命令环（O2 的对象）。
+--   4. 可选注入：定时把 NoBrainer 的 estimate_time 往前推一点，制造"样本时间没前进"的收据（修复①的对象）；
+--      以及直接调用 NoBrainer 暴露的 mod._bal_predictive_correction(true) 来压命令环（O2 的对象）。
 --
 -- 命令：
 --   /mg_practice            用 balance 开一局练习（默认）
@@ -106,7 +106,7 @@ local function start_practice(type_name)
     local state_ok, state = pcall(mg.state, mg)
     -- 注意：pcall 的第 1 个返回值是"成功标志"，第 2 个才是函数结果。这里第一版写成
     -- select(1, pcall(...)) 拿到的是 true，于是 position 永远不是表、set_position 一次没发出去
-    -- （练习台看起来在跑，NB 却一个样本都收不到）。
+    -- （练习台看起来在跑，NoBrainer 却一个样本都收不到）。
     local position_ok, position = pcall(mg.position, mg)
     log("  initial state=%s, position=%s, unit=%s", tostring(state_ok and state or "?"),
         tostring(position_ok and position or "?"), tostring(unit))
@@ -114,7 +114,7 @@ local function start_practice(type_name)
     local nb = nobrainer()
     local balance_state = nb and nb._bal
     -- 关键自检之一：我们 require 到的类表，是否就是全局 MinigameBalance（NoBrainer 钩的就是它）。
-    -- 如果两者不是同一个表，我们调的 set_position 就绕过 NB 的钩子，样本永远不会入队。
+    -- 如果两者不是同一个表，我们调的 set_position 就绕过 NoBrainer 的钩子，样本永远不会入队。
     local required_ok, required_class = pcall(require, path)
     local global_class = rawget(_G, type_name == "balance" and "MinigameBalance" or "")
     log("  class identity: required==global ? %s (required=%s global=%s)",
@@ -143,7 +143,7 @@ mod.update = function(dt)
     local session_type = session.type
     session.frames = session.frames + 1
 
-    -- 0) 会话还活着吗？平衡小游戏会被"玩结束"（随机摇杆把它晃翻），一结束 NB 的 complete 钩子就会
+    -- 0) 会话还活着吗？平衡小游戏会被"玩结束"（随机摇杆把它晃翻），一结束 NoBrainer 的 complete 钩子就会
     --    _balance_cleanup → 之后所有 set_position 都被丢弃。上一轮 13,200 帧计数全 0 很可能就是它。
     --    所以每帧先看状态，结束就地重开一局。
     local state_ok, state = pcall(mg.state, mg)
@@ -202,11 +202,11 @@ mod.update = function(dt)
         end
     end
 
-    -- 状态每 ~10 秒报一次：同时把"NB 那一侧"的关键开关打全，这样一次运行就能判断样本
-    -- 到底卡在哪一步：active=false → NB 已放手（本轮就是它）；pending=true 但计数不动 →
+    -- 状态每 ~10 秒报一次：同时把"NoBrainer 那一侧"的关键开关打全，这样一次运行就能判断样本
+    -- 到底卡在哪一步：active=false → NoBrainer 已放手（本轮就是它）；pending=true 但计数不动 →
     -- 入队了但 on_update 没处理；samples 不涨 → 连 set_position 都没发出去。
     if session.frames % 600 == 0 then
-        log("frames=%d samples=%d state=%s | NB active=%s pending=%s ready=%s | skewed=%s reset=%s stale=%s | injected(skew=%d ring=%d)",
+        log("frames=%d samples=%d state=%s | NoBrainer active=%s pending=%s ready=%s | skewed=%s reset=%s stale=%s | injected(skew=%d ring=%d)",
             session.frames, session.samples, tostring(state),
             tostring(balance and balance.active), tostring(balance and balance.pending_sample),
             tostring(balance and balance.observer_ready), tostring(balance and balance.diag_skewed),
@@ -216,7 +216,7 @@ mod.update = function(dt)
 end
 
 mod:command("mg_practice", "start/stop a headless minigame practice session for NoBrainer testing", function(...)
-    -- DMF 可能把参数拆成多个值给过来，也可能给一整串，两种都接住
+    -- Darktide Mod Framework 可能把参数拆成多个值给过来，也可能给一整串，两种都接住
     local parts = { ... }
     local argument = table.concat(parts, " "):lower():match("^%s*(.-)%s*$")
     if argument == "stop" then

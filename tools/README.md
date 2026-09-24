@@ -69,10 +69,10 @@ foreach ($name in 'MinigameProbe','MinigamePractice') {
   - `/mg_practice [type]`：默认 `balance`，也可 `decode_symbols / decode_search / drill / frequency`。
     做法：`class.new(unit, true, 1)` → `setup_game()` → `start(player, false)`，然后每帧
     `mg:update(dt,t)` + 每 0.5 s `on_axis_set(t,x,y)` + 把位置 `set_position(x,y)` 喂回去
-    （= 真机里服务器 RPC 那条路，正是 NoBrainer 取样处）；每 2 秒注入两种在真机上会自然发生的
+    （= 真机里服务器同步那条路，正是 NoBrainer 取样处）；每 2 秒注入两种在真机上会自然发生的
     条件（`estimate_time` 前移造成"样本时间没前进"；`tick_interval` 变化造成乱序 `apply_time`）。
   - `/mg_practice stop` / `inject`（开关注入）。
-  - 每 10 秒一行：`frames/samples/state | NB active/pending/ready | skewed/reset/stale | injected`。
+  - 每 10 秒一行：`frames/samples/state | NoBrainer active/pending/ready | skewed/reset/stale | injected`。
 
 ## 已知结论（2026-09-24 实测，别再重复踩）
 
@@ -87,7 +87,7 @@ foreach ($name in 'MinigameProbe','MinigamePractice') {
   `skewed` 是**假象**，不是"真实 ping 抖动"。练习台其实复现的是**房主/本地开服**那条样本路
   （`_is_server=true` + 每帧本地取样），不是普通客户端。
 * **真机实测（3 把，2026-09-24）**：普通客户端（`_is_server=false`，样本只来自 `set_position`）
-  1545 个样本 `skewed=0 reset=0 stale=0`；solo play（`_is_server=true`，样本来自 `_update_cursor`）
+  1545 个样本 `skewed=0 reset=0 stale=0`；单人本地开服（`_is_server=true`，样本来自 `_update_cursor`）
   1697 个样本里**每轮恰好 1 次 skewed，就是第 1 个样本**（`is_server=true` 时 `st.rtt=0`，
   `_initialize_balance_tracking` 把 `estimate_time` 设成未偏移的 `mod._time("gameplay")`，
   首样本落在同一帧）—— 那一帧速度本来就是 0，**没有可观测差异**。命令环守卫（`apply_time` 倒退）
@@ -115,13 +115,13 @@ python tools\check_hooks.py <log 路径>
 |---|---|
 | `OK` | 日志里有 `Hooking 'm' from [X]`，挂上了；如果这个类是游戏中途才构造的，日志里还能看到它先被延迟、之后补挂 |
 | `DEAD` | 一直停在 "needs to be delayed"，类始终没出现 → **基本就是游戏更新改了类名** |
-| `ERROR` | DMF 报了 "trying to hook … that doesn't exist" → 方法被改名了 |
+| `ERROR` | Darktide Mod Framework 报了 "trying to hook … that doesn't exist" → 方法被改名了 |
 | `MISSING` | 日志里完全没出现（这份日志没跑到那一段，或钩子压根没注册） |
 
 退出码：全 OK = 0，否则 1。2026-09-24 两份真机日志都是 **39/39 OK**（其中 7 个是延迟后挂上的：
 `MinigameSystem`、`MinigameBalanceView`、`AuspexScanningEffects`）。
 
-**为什么不用 hook_require 全面替换类名式钩子（O6 的结论）**：读 DMF（`modules/core/hooks.lua`）后确认，
+**为什么不用 hook_require 全面替换类名式钩子（O6 的结论）**：读 Darktide Mod Framework（`modules/core/hooks.lua`）后确认，
 类名式钩子并不是"查全局变量"，而是 `rawget(_G, name)` → `rawget(_G.CLASS, name)`（游戏的类登记表），
 查不到就记成延迟钩子，等 `class()` 造出来、第一次 `new` 时补挂 —— 而且**每一步都会写日志**。
 `mod:hook_require(path, cb)` 则是**只看路径**：路径写错时它一声不响，什么都不挂（函数体里从不
