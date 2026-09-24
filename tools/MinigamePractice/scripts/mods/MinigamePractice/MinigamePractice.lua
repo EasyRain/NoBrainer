@@ -109,12 +109,18 @@ local function start_practice(type_name)
 
     local nb = nobrainer()
     local balance_state = nb and nb._bal
+    -- 关键自检之一：我们 require 到的类表，是否就是全局 MinigameBalance（NoBrainer 钩的就是它）。
+    -- 如果两者不是同一个表，我们调的 set_position 就绕过 NB 的钩子，样本永远不会入队。
+    local required_class = select(1, pcall(require, path))
+    local global_class = rawget(_G, type_name == "balance" and "MinigameBalance" or "")
+    log("  class identity: required==global ? %s (required=%s global=%s)",
+        tostring(required_class == global_class), tostring(required_class), tostring(global_class))
     log("  NoBrainer: mod=%s enable_balance=%s balance_active=%s observer_ready=%s",
         tostring(nb ~= nil), tostring(nb and nb:get("enable_balance")),
         tostring(balance_state and balance_state.active),
         tostring(balance_state and balance_state.observer_ready))
 
-    session = { type = type_name, mg = mg, frames = 0, started_at = gameplay_time() }
+    session = { type = type_name, mg = mg, frames = 0, started_at = gameplay_time(), samples = 0 }
     last_inject_at, last_axis_at = 0, 0
     injected_skew, injected_ring = 0, 0
     log("practice running: %s. NoBrainer's balance hooks should be armed now (watch its diag line)",
@@ -130,16 +136,30 @@ mod.update = function(dt)
         return
     end
     local mg = session.mg
+    local session_type = session.type
     session.frames = session.frames + 1
+
+    -- 0) 会话还活着吗？平衡小游戏会被"玩结束"（随机摇杆把它晃翻），一结束 NB 的 complete 钩子就会
+    --    _balance_cleanup → 之后所有 set_position 都被丢弃。上一轮 13,200 帧计数全 0 很可能就是它。
+    --    所以每帧先看状态，结束就地重开一局。
+    local state_ok, state = pcall(mg.state, mg)
+    local completed_ok, completed = pcall(mg.is_completed, mg)
+    if (state_ok and state ~= "gameplay") or (completed_ok and completed) then
+        log("session ended (state=%s completed=%s) after %d frames / %d samples - restarting",
+            tostring(state), tostring(completed), session.frames, session.samples)
+        stop_practice("minigame_ended")
+        start_practice(session_type or "balance")   -- 立刻再开一局，保持采样连续
+        return
+    end
 
     -- 1) 我们自己当服务器：步进游戏自己的物理
     pcall(mg.update, mg, dt, t)
 
-    -- 2) 摇杆输入，让位置动起来
+    -- 2) 摇杆输入，让位置动起来（幅度小一点，别把自己晃翻）
     if t >= last_axis_at + 0.5 then
         last_axis_at = t
-        local x = (math.random() * 2 - 1) * 0.7
-        local y = (math.random() * 2 - 1) * 0.7
+        local x = (math.random() * 2 - 1) * 0.25
+        local y = (math.random() * 2 - 1) * 0.25
         pcall(mg.on_axis_set, mg, t, x, y)
     end
 
@@ -147,6 +167,7 @@ mod.update = function(dt)
     local position = select(1, pcall(mg.position, mg))
     if type(position) == "table" and type(position.x) == "number" then
         pcall(mg.set_position, mg, position.x, position.y)
+        session.samples = session.samples + 1
     end
 
     -- 4) 注入：把 NoBrainer 的 estimate_time 往前推 → 下一条收据的"测量时间"落在它之前，
@@ -172,11 +193,14 @@ mod.update = function(dt)
         end
     end
 
-    -- 状态每 ~10 秒报一次，便于把注入次数和 NoBrainer 自己的 diag 行对上
+    -- 状态每 ~10 秒报一次：同时把"NB 那一侧"的关键开关打全，这样一次运行就能判断样本
+    -- 到底卡在哪一步：active=false → NB 已放手（本轮就是它）；pending=true 但计数不动 →
+    -- 入队了但 on_update 没处理；samples 不涨 → 连 set_position 都没发出去。
     if session.frames % 600 == 0 then
-        local ready = balance and balance.observer_ready
-        log("frames=%d ready=%s skewed=%s reset=%s stale=%s injected(skew=%d ring=%d)",
-            session.frames, tostring(ready), tostring(balance and balance.diag_skewed),
+        log("frames=%d samples=%d state=%s | NB active=%s pending=%s ready=%s | skewed=%s reset=%s stale=%s | injected(skew=%d ring=%d)",
+            session.frames, session.samples, tostring(state),
+            tostring(balance and balance.active), tostring(balance and balance.pending_sample),
+            tostring(balance and balance.observer_ready), tostring(balance and balance.diag_skewed),
             tostring(balance and balance.diag_reset), tostring(balance and balance.diag_stale),
             injected_skew, injected_ring)
     end
