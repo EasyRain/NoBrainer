@@ -4,6 +4,15 @@
 两个"进游戏用"的 mod 已经**从游戏里移出**（备份在 `D:\DshWorkSpace\Darktide\.dtsrc\game-mods-removed\`），
 仓库里这份是源头。
 
+## GitHub
+
+- 上游：`Vansinnet/NoBrainer`（作者公开源码，1 个 commit；**内容和我们基线 `5b2528c` 完全相同**）
+- 我们的 fork：`EasyRain/NoBrainer` —— `main` = 上游原样（别推），`maintained` = 我们的完整提交历史
+- 推送：`git push`（`origin` 已配好，本地 `master` 跟踪 `origin/maintained`；凭据走 `gh auth setup-git`）
+
+> 本机 git 有个坑：默认 TLS 后端 **schannel 会卡死**（`ls-remote` 挂 21 秒报连不上，但 curl / gh
+> 都正常）。已经 `git config --global http.sslBackend openssl` 修好；换机器/重装后要重新设。
+
 ## 一把跑完（改完代码 / 游戏更新后）
 
 ```powershell
