@@ -31,7 +31,14 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 | 命令环单调钳制 | **BetterBrainer**（`balance.lua:59`，`record()` 里的 `math.max`） | `_record_command`：晚到/重复的 `apply_time` **覆盖环头**而不是追加 —— `_command_at` 从 head 往回扫、假定时间递减，非单调会取到过期指令。 |
 | 会话键用对象身份 | 本项目（BetterBrainer 仍用 `tostring`） | 五个模块共 41 处 `tostring(mg)` / `tostring(self)` → 引用比较。这些 `_is_active_*` 是从**每帧钩子**里调的，原来每帧都在新建字符串；顺带避免对象回收后地址复用导致"两个不同小游戏看起来相等"。 |
 | 两个计数器 | 本项目 | `diag_skewed` / `diag_reset` 纯计数、**运行时不打印**，只给离线冒烟测试断言用。 |
-| 调试日志开关 | 本项目（把上游遗留的**死设置** `enable_debug_messages` 接上） | DMF 选项里新增 **Debug → Write Debug Log**，**默认关闭**。打开后每局小游戏的关键事件写一行到**游戏日志文件**（不上屏、不改变行为），固定前缀 `NoBrainer debug:`：每种小游戏各报 开始 / 结束 / 提交，Train Balance 另外报累计 `skewed` / `reset`。反馈问题或维护排查时打开，量完关掉。 |
+| 调试日志开关 | 本项目（把上游遗留的**死设置** `enable_debug_messages` 接上） | DMF 选项里新增 **Debug → Write Debug Log**，**默认关闭**。打开后每局小游戏的关键事件写一行到**游戏日志文件**（不上屏、不改变行为），固定前缀 `NoBrainer debug:`：每种小游戏各报 开始 / 结束 / 提交，Train Balance 另外报累计 `skewed` / `reset`，启动时另报一次小游戏类型审计（见下）。反馈问题或维护排查时打开，量完关掉。 |
+
+> **关于 Frequency Matching（沿用自上游的遗留）**：当前游戏版本里 `frequency` 这个类型**确实是注册过的**
+> （`minigame_classes` 里有它，类和视图也都在），但**没有任何已知内容会触发它** —— 官方 wiki 的小游戏
+> 清单、Expeditions 补丁说明都不提它，资料站上它的截图只有"在灵能室里用 mod 拉起来"的版本。
+> 也就是说它很可能是官方做出来又没放出去的残骸。这里**保留**这块代码（删掉没有任何收益），
+> 只是别指望在图上遇到它。打开调试日志时启动会打印一行类型审计，可以随时复核：
+> `NoBrainer debug: minigame audit: registered = …` / `NOT registered (dead content) = …`。
 
 ## 真机实测结论（别再重复劳动）
 
