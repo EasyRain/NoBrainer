@@ -33,16 +33,20 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 | 两个计数器 | 本项目 | `diag_skewed` / `diag_reset` 纯计数、**运行时不打印**，只给离线冒烟测试断言用。 |
 | 调试日志开关 | 本项目（把上游遗留的**死设置** `enable_debug_messages` 接上） | DMF 选项里新增 **Debug → Write Debug Log**，**默认关闭**。打开后每局小游戏的关键事件写一行到**游戏日志文件**（不上屏、不改变行为），固定前缀 `NoBrainer debug:`：每种小游戏各报 开始 / 结束 / 提交，Train Balance 另外报累计 `skewed` / `reset`，启动时另报一次小游戏类型审计（见下）。反馈问题或维护排查时打开，量完关掉。 |
 
-> **关于 Frequency Matching（沿用自上游的遗留）**：这个类型不是残骸，而是**限时活动的专属次要目标**——
-> 官方活动 "Communication Breakdown"（2025-04-24 ~ 05-08）在 **Tainted Airwaves** 状态下加入的
-> **Corrupted Communication Device**：设备像经文/魔典一样随机刷新，骇入小游戏就是**把玩家（橙色）波形的
-> 宽度和高度匹配到目标（绿色）波形、匹配后按下扳机，重复 3 次**（对应 `frequency_search_stage_amount = 3`）；
-> 骇入完成后会刷出一只 **Scab Radio Operator** 召唤援军。
+> **关于 Frequency Matching（沿用自上游的遗留）**：这个类型不是残骸，而是**限时活动专属次要目标**的小游戏。
 >
-> 活动结束后这个次要目标**不再刷新**，所以正常游戏里遇不到它 —— 但代码、类、视图、RPC 和
+> 活动 **Communication Breakdown**（2025-04-24 ~ 05-08）在 **Tainted Airwaves** 状态下加入了这个目标，
+> 活动面板上叫 **"Find and disable enemy devices"**，进度档位是 2 / 4 / 6 / 8 / 12 / 16 / 20 个设备
+> （每骇入一个设备 1 分，最后一档给徽章）。对应的局内物件是 **Corrupted Communication Device**：
+> 像经文/魔典一样随机刷新（每局 3 个，注意微弱的橙色光），骇入小游戏就是**把玩家（橙色）波形的宽度和
+> 高度匹配到目标（绿色）波形、匹配后按下扳机，重复 3 次**（对应 `frequency_search_stage_amount = 3`）；
+> 骇入完成后会刷出一只 **Scab Radio Operator**（内部 breed 名 `renegade_radio_operator`）召唤援军。
+>
+> 活动结束后这个次要目标**不再刷新**，所以正常游戏里遇不到 —— 但代码、类、视图、RPC 和
 > `minigame_classes` 里的注册项都还在（调试日志的启动审计会显示 `frequency` 属于 registered）。
 > 因此这里**保留**这块代码（继承自 AuspexHelper → BetterBrainer → 本分支，删掉没有收益）；
 > 万一将来复刻活动或某个状态把它放出来，打开调试日志就能看到 `frequency: start` / `submit` / `complete`。
+> 出处：[Communication Breakdown（官方 wiki）](https://warhammer-40k-darktide.fandom.com/wiki/Communication_Breakdown)。
 
 ## 真机实测结论（别再重复劳动）
 
