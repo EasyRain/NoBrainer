@@ -57,10 +57,22 @@ foreach ($name in 'MinigameProbe','MinigamePractice') {
 * 练手台曾经两个 bug 都出在"取错返回值"上：读错了 mod 表（应 `get_mod("NoBrainer")._bal`）、
   以及 `select(1, pcall(...))` 拿到的是成功标志而不是结果 → `set_position` 一次没发。
   现在开局会打印类身份与 NoBrainer 的武装状态做自检。
-* 实测数据（60 秒、5400 帧、`samples==frames`）：`skewed` 63 → 659 持续增长、`reset=0`、`stale=0`
-  —— 即"样本时间没前进"在真实网络抖动下**确有其事**，而真正断档没有发生。
-  练习台的注入（33 次）只占极少数，说明**绝大多数是同一次真实 ping 抖动自然产生的**。
+* 实测数据（60 秒、5400 帧、`samples==frames`）：`skewed` 63 → 659 持续增长、`reset=0`、`stale=0`。
+  ⚠️ **这条结论后来被真机数据推翻了**：练习台在**枢纽**里跑，枢纽的 `mod._time("gameplay")`
+  是**量化**的（约 10 Hz），而练习台每帧都塞一个样本 → 九成样本时间戳没前进 → 那 659 次
+  `skewed` 是**假象**，不是"真实 ping 抖动"。练习台其实复现的是**房主/本地开服**那条样本路
+  （`_is_server=true` + 每帧本地取样），不是普通客户端。
+* **真机实测（3 把，2026-09-24）**：普通客户端（`_is_server=false`，样本只来自 `set_position`）
+  1545 个样本 `skewed=0 reset=0 stale=0`；solo play（`_is_server=true`，样本来自 `_update_cursor`）
+  1697 个样本里**每轮恰好 1 次 skewed，就是第 1 个样本**（`is_server=true` 时 `st.rtt=0`，
+  `_initialize_balance_tracking` 把 `estimate_time` 设成未偏移的 `mod._time("gameplay")`，
+  首样本落在同一帧）—— 那一帧速度本来就是 0，**没有可观测差异**。命令环守卫（`apply_time` 倒退）
+  在两种场景下都是 0 次。
+  → 即：从 BetterBrainer 移植的两处改动在真机上**不改变行为**，留着当防御；`smoke_balance.lua`
+  才是唯一能确定性证明其行为差异的地方。
 * 真机"基线版 A/B"**不值得做**：基线没有计数器，加计数器也只能得到同样的 `skewed` 数字
   （同一事件），差异在"速度是否被清零"这种连续量上，靠计数看不出来；这个差异已由
-  `smoke_balance.lua` 确定性证明。要更强的真机验证，下一步是**打开真正的
-  `scanner_display_view`**，让 NoBrainer 的输入路径（`stale`）也进入测试范围。
+  `smoke_balance.lua` 确定性证明。
+* 真机探针已在 commit `2ca9d6b` **全部拆除**（连 `DIAGNOSTICS` 一起），balance 模块现在没有任何输出；
+  只剩两个纯计数器 `diag_skewed/diag_reset`，因为 `smoke_balance.lua` 要靠它们断言。若以后还要量，
+  最小配方见 `WORKSPACE_MEMORY.md` §9「最终状态」那条。
