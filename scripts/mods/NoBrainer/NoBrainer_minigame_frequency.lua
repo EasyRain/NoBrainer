@@ -190,6 +190,9 @@ local function _sample_frequency(mg, allow_server_fallback)
         end
 
         if on_target and mod._freq_try_submit and mod._freq_try_submit(now) then
+            -- 服务器侧回退路径：房主/单人时直接驱动小游戏，不经过输入路由，
+            -- 所以这里单独记一行（客户端走输入路由那条会打 "frequency: submit"）。
+            mod._debug("frequency: submit (server path)")
             mg:test_frequency(mg._frequency.x, mg._frequency.y)
         end
     end

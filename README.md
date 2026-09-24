@@ -42,11 +42,16 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 > 高度匹配到目标（绿色）波形、匹配后按下扳机，重复 3 次**（对应 `frequency_search_stage_amount = 3`）；
 > 骇入完成后会刷出一只 **Scab Radio Operator**（内部 breed 名 `renegade_radio_operator`）召唤援军。
 >
-> 活动结束后这个次要目标**不再刷新**，所以正常游戏里遇不到 —— 但代码、类、视图、RPC 和
+> 活动结束后这个次要目标**不再刷新**，所以常规任务里遇不到 —— 但代码、类、视图、RPC 和
 > `minigame_classes` 里的注册项都还在（调试日志的启动审计会显示 `frequency` 属于 registered）。
 > 因此这里**保留**这块代码（继承自 AuspexHelper → BetterBrainer → 本分支，删掉没有收益）；
 > 万一将来复刻活动或某个状态把它放出来，打开调试日志就能看到 `frequency: start` / `submit` / `complete`。
 > 出处：[Communication Breakdown（官方 wiki）](https://warhammer-40k-darktide.fandom.com/wiki/Communication_Breakdown)。
+>
+> **实测（2026-09-24）**：用 SoloPlay 的自定义地图仍然能复现出这个目标。那一次
+> `frequency: start (local=true server=true auto=true highlight=true)` → **2 秒后 `complete`**，无任何报错。
+> 注意房主/单人时走的是模块自己的**服务器侧回退路径**（`on_axis_set` + `test_frequency`，不经过输入路由），
+> 所以日志里出现的是 `frequency: submit (server path)`；纯客户端才会打 `frequency: submit`。
 
 ## 真机实测结论（别再重复劳动）
 
