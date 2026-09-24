@@ -1,8 +1,8 @@
 # nobrainer/tools
 
-这个目录里的东西不是 mod 的一部分，是维护 NoBrainer 用的工具。2026-09-24 实测跑通后，
-两个"进游戏用"的 mod 已经**从游戏里移出**（备份在 `D:\DshWorkSpace\Darktide\.dtsrc\game-mods-removed\`），
-仓库里这份是源头。
+这个目录里的东西不是 mod 的一部分，是维护 NoBrainer 用的工具。两个"进游戏用"的探针
+（`MinigameProbe` / `MinigamePractice`）实测跑通后平时**不装在游戏里**，仓库里这份就是源头，
+需要时按下面的步骤装回去。
 
 ## GitHub
 
@@ -10,8 +10,8 @@
 - 我们的 fork：`EasyRain/NoBrainer` —— `main` = 上游原样（别推），`maintained` = 我们的完整提交历史
 - 推送：`git push`（`origin` 已配好，本地 `master` 跟踪 `origin/maintained`；凭据走 `gh auth setup-git`）
 
-> 本机 git 有个坑：默认 TLS 后端 **schannel 会卡死**（`ls-remote` 挂 21 秒报连不上，但 curl / gh
-> 都正常）。已经 `git config --global http.sslBackend openssl` 修好；换机器/重装后要重新设。
+> Windows 上 git 默认的 TLS 后端 **schannel 可能卡死**（`ls-remote` 挂二十多秒报连不上，
+> 而 curl / gh 正常）。换成 OpenSSL 后端即可：`git config --global http.sslBackend openssl`。
 
 ## 一把跑完（改完代码 / 游戏更新后）
 
@@ -21,8 +21,8 @@ powershell -File tools\run_checks.ps1
 
 它会依次跑：① balance 的离线冒烟测试；② 钩子体检（对最新日志）。任何一项不过就以非 0 退出。
 
-> 本机只有 Windows PowerShell 5.1（没有 `pwsh`）。`.ps1` **必须带 UTF-8 BOM**，否则 5.1 会把中文
-> 当 ANSI 读成乱码、甚至报"缺少引号"。`edit` 工具改写文件时会把 BOM 去掉，所以动过 .ps1 之后要补回来：
+> Windows PowerShell 5.1 会把**没有 BOM 的 UTF-8 当 ANSI 读**：中文变乱码，甚至报错。
+> 仓库里的 `.ps1` 都带 UTF-8 BOM；用编辑器改过之后若 BOM 丢了，按下面补回来：
 > ```powershell
 > $p='tools\run_checks.ps1'; $t=[IO.File]::ReadAllText($p,(New-Object Text.UTF8Encoding($false)))
 > [IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($true)))
@@ -35,12 +35,12 @@ luajit tools/smoke_balance.lua                     # 用桩在游戏外跑 balan
 luajit tools/smoke_balance.lua <另一份模块路径>      # 对比另一份（例如 git show <基线>:... 导出的）
 ```
 
-`luajit` **不在 PATH 上**，本机装在 `D:\Tools\Lua\luajit\src\luajit.exe`（同目录还有 `lua55.exe`、`luac55.exe`）。
-实际跑法：
+`luajit` 不一定在 PATH 上；不在的话用完整路径调用即可（`tools\run_checks.ps1` 顶部留了一个
+可改的默认路径，找不到会退回 PATH）：
 
 ```powershell
-cd D:\DshWorkSpace\Darktide\repos\nobrainer
-& D:\Tools\Lua\luajit\src\luajit.exe tools\smoke_balance.lua
+cd <本仓库根目录>
+<luajit 所在目录>\luajit.exe tools\smoke_balance.lua
 ```
 
 它钉住三件事：样本时间没前进时**保留**速度估计（而不是清零）、真正断档仍然重置、
@@ -51,7 +51,7 @@ cd D:\DshWorkSpace\Darktide\repos\nobrainer
 装法（两者都要先重启游戏才生效）：
 
 ```powershell
-$mods = 'D:\Steam\steamapps\common\Warhammer 40,000 DARKTIDE\mods'
+$mods = '<Darktide 安装目录>\mods'
 foreach ($name in 'MinigameProbe','MinigamePractice') {
     Copy-Item "tools\$name" "$mods\$name" -Recurse -Force
 }
@@ -98,8 +98,12 @@ foreach ($name in 'MinigameProbe','MinigamePractice') {
   （同一事件），差异在"速度是否被清零"这种连续量上，靠计数看不出来；这个差异已由
   `smoke_balance.lua` 确定性证明。
 * 真机探针已在 commit `2ca9d6b` **全部拆除**（连 `DIAGNOSTICS` 一起），balance 模块现在没有任何输出；
-  只剩两个纯计数器 `diag_skewed/diag_reset`，因为 `smoke_balance.lua` 要靠它们断言。若以后还要量，
-  最小配方见 `WORKSPACE_MEMORY.md` §9「最终状态」那条。
+  只剩两个纯计数器 `diag_skewed/diag_reset`，因为 `smoke_balance.lua` 要靠它们断言。
+* 以后还想量真机数据，最小配方：① 在 `_process_predictive_sample` 里加一个 `diag_samples` 计数；
+  ② 在两个取样点（视图的 `_update_cursor` 和 `set_position`）各加一个计数，区分本地路与网络路；
+  ③ 用 `mod:echo` 打周期行（Darktide Mod Framework 默认 echo = 日志 + 聊天框）；
+  ④ 收尾在 `_balance_cleanup` 里打一行，并**先判 `balance_active`** —— 否则 `round_end` / `unload`
+  反复调用会重复重报同一批旧数字。量完记得全部拆掉。
 
 ## 钩子体检（`check_hooks.py`）
 

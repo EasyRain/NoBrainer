@@ -43,7 +43,7 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 
 也就是说：**两处守卫在真机上是空操作**，留着当防御（对"同一时间戳的重复样本"这类异常更稳）；
 它们的行为差异由 `tools/smoke_balance.lua` 确定性证明（对基线跑会有 6 条断言失败）。
-如果哪天想再量，最小探针配方写在 `tools/README.md` 与工作区记忆 §9。
+如果哪天想再量，最小探针配方写在 [`tools/README.md`](tools/README.md) 里。
 
 ## 工具（`tools/`）
 
