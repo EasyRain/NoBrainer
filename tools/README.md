@@ -4,6 +4,21 @@
 两个"进游戏用"的 mod 已经**从游戏里移出**（备份在 `D:\DshWorkSpace\Darktide\.dtsrc\game-mods-removed\`），
 仓库里这份是源头。
 
+## 一把跑完（改完代码 / 游戏更新后）
+
+```powershell
+powershell -File tools\run_checks.ps1
+```
+
+它会依次跑：① balance 的离线冒烟测试；② 钩子体检（对最新日志）。任何一项不过就以非 0 退出。
+
+> 本机只有 Windows PowerShell 5.1（没有 `pwsh`）。`.ps1` **必须带 UTF-8 BOM**，否则 5.1 会把中文
+> 当 ANSI 读成乱码、甚至报"缺少引号"。`edit` 工具改写文件时会把 BOM 去掉，所以动过 .ps1 之后要补回来：
+> ```powershell
+> $p='tools\run_checks.ps1'; $t=[IO.File]::ReadAllText($p,(New-Object Text.UTF8Encoding($false)))
+> [IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($true)))
+> ```
+
 ## 离线：改 balance / 相关逻辑前后先跑这个
 
 ```
@@ -76,3 +91,47 @@ foreach ($name in 'MinigameProbe','MinigamePractice') {
 * 真机探针已在 commit `2ca9d6b` **全部拆除**（连 `DIAGNOSTICS` 一起），balance 模块现在没有任何输出；
   只剩两个纯计数器 `diag_skewed/diag_reset`，因为 `smoke_balance.lua` 要靠它们断言。若以后还要量，
   最小配方见 `WORKSPACE_MEMORY.md` §9「最终状态」那条。
+
+## 钩子体检（`check_hooks.py`）
+
+```powershell
+python tools\check_hooks.py                 # 用最新日志，mod 名默认 NoBrainer
+python tools\check_hooks.py <log 路径>
+```
+
+它把**仓库源码里注册的每个钩子**（类名式 `mod:hook_safe("X","m")` + 路径式 `hook_require` 里面的）
+和**真机日志**对着核，逐个给出：
+
+| 状态 | 含义 |
+|---|---|
+| `OK` | 日志里有 `Hooking 'm' from [X]`，挂上了；如果这个类是游戏中途才构造的，日志里还能看到它先被延迟、之后补挂 |
+| `DEAD` | 一直停在 "needs to be delayed"，类始终没出现 → **基本就是游戏更新改了类名** |
+| `ERROR` | DMF 报了 "trying to hook … that doesn't exist" → 方法被改名了 |
+| `MISSING` | 日志里完全没出现（这份日志没跑到那一段，或钩子压根没注册） |
+
+退出码：全 OK = 0，否则 1。2026-09-24 两份真机日志都是 **39/39 OK**（其中 7 个是延迟后挂上的：
+`MinigameSystem`、`MinigameBalanceView`、`AuspexScanningEffects`）。
+
+**为什么不用 hook_require 全面替换类名式钩子（O6 的结论）**：读 DMF（`modules/core/hooks.lua`）后确认，
+类名式钩子并不是"查全局变量"，而是 `rawget(_G, name)` → `rawget(_G.CLASS, name)`（游戏的类登记表），
+查不到就记成延迟钩子，等 `class()` 造出来、第一次 `new` 时补挂 —— 而且**每一步都会写日志**。
+`mod:hook_require(path, cb)` 则是**只看路径**：路径写错时它一声不响，什么都不挂（函数体里从不
+`require` 那个路径）。也就是说换过去等于**把一个会留痕的机制换成一个静默的机制**，风险不对等。
+真正要防"游戏更新后静默失效"，用上面这个体检脚本更直接。
+
+**顺便：所有模块路径都已实测确认**（`MinigameProbe` 的 `/mg_probe` 在当前 build 里逐个 `require` 过，
+日志 `04:50:14` / `04:55:44`）：
+
+```
+scripts/extension_systems/minigame/minigame_system
+scripts/extension_systems/minigame/minigame_extension
+scripts/extension_systems/minigame/minigames/minigame_{balance,decode_search,decode_symbols,drill,frequency}
+scripts/ui/views/scanner_display_view/minigame_{balance,decode_search,decode_symbols,drill,frequency}_view
+scripts/extension_systems/weapon/actions/action_scan_confirm
+scripts/extension_systems/input/player_unit_input_extension
+scripts/extension_systems/character_state_machine/character_states/player_character_state_minigame
+scripts/extension_systems/visual_loadout/wieldable_slot_scripts/auspex_scanning_effects   ← 来自 BetterBrainer，未单独 require 过
+scripts/settings/minigame/minigame_settings
+```
+
+（`minigame_servo_skull` / `minigame_manager` **不存在**，别照名字猜。）
