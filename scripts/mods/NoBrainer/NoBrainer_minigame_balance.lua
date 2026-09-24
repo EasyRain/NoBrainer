@@ -404,7 +404,8 @@ local function on_update(dt)
 		if st.diag_timer <= 0 then
 			st.diag_timer = DIAGNOSTIC_INTERVAL
 			if st.diag_skewed > 0 or st.diag_reset > 0 or st.diag_stale > 0 then
-				mod:info("NoBrainer balance diag: skewed=%d reset=%d stale=%d",
+				-- 临时：真机观察期用 echo（DMF 默认 echo = 日志 + 聊天框），量完换回 mod:info。
+				mod:echo("NoBrainer balance diag: skewed=%d reset=%d stale=%d",
 					st.diag_skewed, st.diag_reset, st.diag_stale)
 			end
 		end
