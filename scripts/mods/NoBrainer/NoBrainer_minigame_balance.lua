@@ -66,8 +66,10 @@ mod._bal = {
 	-- q_other = 收到位置但对象不是被 arm 的那个，cursor = 视图 _update_cursor 带着活跃小游戏跑过的帧数，
 	-- samples = 真正进到过估计器的样本，input = NB 的输入路径真正发出过修正的次数
 	diag_samples = 0, diag_q_local = 0, diag_q_net = 0, diag_q_other = 0, diag_cursor = 0, diag_input = 0,
+	-- 命令环：append = 正常追加，overwrite = 单调性守卫触发（apply_time 没前进）
+	diag_ring_append = 0, diag_ring_overwrite = 0,
 	diag_run_samples = 0, diag_run_q_local = 0, diag_run_q_net = 0, diag_run_q_other = 0,
-	diag_run_cursor = 0, diag_run_input = 0,
+	diag_run_cursor = 0, diag_run_input = 0, diag_run_ring_append = 0, diag_run_ring_overwrite = 0,
 }
 
 local st = mod._bal
@@ -165,11 +167,13 @@ local function _record_command(apply_time, correction_x, correction_y)
 	-- apply_time（_commit_predictive_command 会用缓存的 correction_apply_time）会破坏这个
 	-- 假设，让查询取到过期指令、也无法提前退出。BetterBrainer 的 record() 同样做单调钳制。
 	if st.command_count > 0 and apply_time <= st.command_times[st.command_head] then
+		st.diag_ring_overwrite = st.diag_ring_overwrite + 1
 		st.command_xs[st.command_head] = correction_x
 		st.command_ys[st.command_head] = correction_y
 		return
 	end
 
+	st.diag_ring_append = st.diag_ring_append + 1
 	local head = st.command_head % COMMAND_HISTORY_SIZE + 1
 	st.command_head = head
 	st.command_count = math.min(st.command_count + 1, COMMAND_HISTORY_SIZE)
@@ -404,7 +408,7 @@ local function _diag_report(tag)
 		and st.diag_reset == st.diag_shown_reset
 		and st.diag_stale == st.diag_shown_stale
 		and st.diag_samples == st.diag_shown_samples
-		and st.diag_cursor == st.diag_shown_cursor
+		and st.diag_ring_overwrite == st.diag_shown_ring
 	then
 		return
 	end
@@ -412,22 +416,25 @@ local function _diag_report(tag)
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
 	st.diag_shown_samples = st.diag_samples
-	st.diag_shown_cursor = st.diag_cursor
-	mod:echo("NoBrainer balance diag%s: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d | skewed=%d reset=%d stale=%d",
+	st.diag_shown_ring = st.diag_ring_overwrite
+	mod:echo("NoBrainer balance diag%s: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d ring=%d/%d | skewed=%d reset=%d stale=%d",
 		tag or "", st.diag_cursor, st.diag_q_local, st.diag_q_net, st.diag_q_other,
-		st.diag_samples, st.diag_input, st.diag_skewed, st.diag_reset, st.diag_stale)
+		st.diag_samples, st.diag_input, st.diag_ring_append, st.diag_ring_overwrite,
+		st.diag_skewed, st.diag_reset, st.diag_stale)
 end
 
--- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条
--- （这里**无条件**打印，哪怕全是 0 —— "0 样本"本身就是最有用的结论）。
+-- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条。
+-- 只在真的有一个 session 活着的时候打（否则 unload/round_end 会反复重报同一批旧数字）。
 local function _diag_report_run()
-	if not DIAGNOSTICS then return end
+	if not DIAGNOSTICS or not balance_active then return end
 	local run_q_local = st.diag_q_local - (st.diag_run_q_local or 0)
 	local run_q_net = st.diag_q_net - (st.diag_run_q_net or 0)
 	local run_q_other = st.diag_q_other - (st.diag_run_q_other or 0)
 	local run_cursor = st.diag_cursor - (st.diag_run_cursor or 0)
 	local run_samples = st.diag_samples - (st.diag_run_samples or 0)
 	local run_input = st.diag_input - (st.diag_run_input or 0)
+	local run_ring_ow = st.diag_ring_overwrite - (st.diag_run_ring_overwrite or 0)
+	local run_ring_ap = st.diag_ring_append - (st.diag_run_ring_append or 0)
 	local run_skewed = st.diag_skewed - (st.diag_run_skewed or 0)
 	local run_reset = st.diag_reset - (st.diag_run_reset or 0)
 	local run_stale = st.diag_stale - (st.diag_run_stale or 0)
@@ -436,11 +443,11 @@ local function _diag_report_run()
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
 	st.diag_shown_samples = st.diag_samples
-	st.diag_shown_cursor = st.diag_cursor
-	mod:echo("NoBrainer balance run end: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d | run skewed=%d reset=%d stale=%d | total samples=%d skewed=%d reset=%d",
-		run_cursor, run_q_local, run_q_net, run_q_other, run_samples, run_input,
+	st.diag_shown_ring = st.diag_ring_overwrite
+	mod:echo("NoBrainer balance run end: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d ring=%d/%d | run skewed=%d reset=%d stale=%d | total samples=%d skewed=%d reset=%d ring_ow=%d",
+		run_cursor, run_q_local, run_q_net, run_q_other, run_samples, run_input, run_ring_ap, run_ring_ow,
 		run_skewed, run_reset, run_stale,
-		st.diag_samples, st.diag_skewed, st.diag_reset)
+		st.diag_samples, st.diag_skewed, st.diag_reset, st.diag_ring_overwrite)
 end
 
 local function on_update(dt)
@@ -489,6 +496,8 @@ local function _arm_balance_session(mg, restart_until, previous_x, previous_y, p
 	st.diag_run_cursor = st.diag_cursor
 	st.diag_run_samples = st.diag_samples
 	st.diag_run_input = st.diag_input
+	st.diag_run_ring_append = st.diag_ring_append
+	st.diag_run_ring_overwrite = st.diag_ring_overwrite
 	if DIAGNOSTICS then
 		mod:echo("NoBrainer balance ARM: is_server=%s mg=%s", tostring(mg and mg._is_server), tostring(mg ~= nil))
 	end
