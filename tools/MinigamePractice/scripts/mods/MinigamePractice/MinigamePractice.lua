@@ -104,14 +104,18 @@ local function start_practice(type_name)
         tostring(setup_ok), tostring(setup_err), tostring(start_ok), tostring(start_err))
 
     local state_ok, state = pcall(mg.state, mg)
+    -- 注意：pcall 的第 1 个返回值是"成功标志"，第 2 个才是函数结果。这里第一版写成
+    -- select(1, pcall(...)) 拿到的是 true，于是 position 永远不是表、set_position 一次没发出去
+    -- （练习台看起来在跑，NB 却一个样本都收不到）。
+    local position_ok, position = pcall(mg.position, mg)
     log("  initial state=%s, position=%s, unit=%s", tostring(state_ok and state or "?"),
-        tostring(select(1, pcall(mg.position, mg))), tostring(unit))
+        tostring(position_ok and position or "?"), tostring(unit))
 
     local nb = nobrainer()
     local balance_state = nb and nb._bal
     -- 关键自检之一：我们 require 到的类表，是否就是全局 MinigameBalance（NoBrainer 钩的就是它）。
     -- 如果两者不是同一个表，我们调的 set_position 就绕过 NB 的钩子，样本永远不会入队。
-    local required_class = select(1, pcall(require, path))
+    local required_ok, required_class = pcall(require, path)
     local global_class = rawget(_G, type_name == "balance" and "MinigameBalance" or "")
     log("  class identity: required==global ? %s (required=%s global=%s)",
         tostring(required_class == global_class), tostring(required_class), tostring(global_class))
@@ -164,10 +168,15 @@ mod.update = function(dt)
     end
 
     -- 3) 位置当作"服务器发来的收据"喂回去（NoBrainer 的 set_position 钩子在这里取样）
-    local position = select(1, pcall(mg.position, mg))
-    if type(position) == "table" and type(position.x) == "number" then
-        pcall(mg.set_position, mg, position.x, position.y)
+    local position_ok, position = pcall(mg.position, mg)
+    if position_ok and type(position) == "table" and type(position.x) == "number" then
+        local sent_ok, sent_err = pcall(mg.set_position, mg, position.x, position.y)
         session.samples = session.samples + 1
+        if not sent_ok and session.samples == 1 then
+            log("set_position failed once: %s", tostring(sent_err))
+        end
+    elseif session.frames % 600 == 0 then
+        log("position unavailable: ok=%s value=%s", tostring(position_ok), tostring(position))
     end
 
     -- 4) 注入：把 NoBrainer 的 estimate_time 往前推 → 下一条收据的"测量时间"落在它之前，
