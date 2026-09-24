@@ -21,8 +21,9 @@ local PREDICTIVE_GAIN = 0.35
 local BALANCE_RESTART_RECOVERY_TIMEOUT = 1.2
 
 -- 上机量数据用：只加计数和一行日志，不改变任何行为。量完把 DIAGNOSTICS 改成 false。
+-- 观察期临时用 mod:echo（DMF 默认 echo = 日志 + 聊天框），量完换回 mod:info。
 local DIAGNOSTICS = true
-local DIAGNOSTIC_INTERVAL = 10
+local DIAGNOSTIC_INTERVAL = 2
 
 mod._bal = {
 	timer    = 0,
@@ -58,6 +59,8 @@ mod._bal = {
 	diag_reset = 0,    -- estimate 被重置（含 dt > SAMPLE_TIMEOUT）的次数
 	diag_stale = 0,    -- 输入闸门因新鲜度窗口到期而放手的次数
 	diag_timer = 0,
+	diag_shown_skewed = 0, diag_shown_reset = 0, diag_shown_stale = 0,  -- 上次打印时的累计值
+	diag_run_skewed = 0, diag_run_reset = 0, diag_run_stale = 0,        -- 本轮小游戏开始时的累计值
 }
 
 local st = mod._bal
@@ -373,6 +376,40 @@ mod:hook_safe("MinigameBalance", "set_position", function(self, x, y)
 	end
 end)
 
+-- 诊断输出。周期行只在"距上次打印有变化"时才写，所以空闲的小游戏不会刷屏。
+local function _diag_report(tag)
+	if not DIAGNOSTICS then return end
+	if st.diag_skewed == st.diag_shown_skewed
+		and st.diag_reset == st.diag_shown_reset
+		and st.diag_stale == st.diag_shown_stale
+	then
+		return
+	end
+	st.diag_shown_skewed = st.diag_skewed
+	st.diag_shown_reset = st.diag_reset
+	st.diag_shown_stale = st.diag_stale
+	mod:echo("NoBrainer balance diag%s: skewed=%d reset=%d stale=%d", tag or "",
+		st.diag_skewed, st.diag_reset, st.diag_stale)
+end
+
+-- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条。
+-- 打印本轮增量 + 整局累计。
+local function _diag_report_run()
+	if not DIAGNOSTICS then return end
+	local run_skewed = st.diag_skewed - (st.diag_run_skewed or 0)
+	local run_reset = st.diag_reset - (st.diag_run_reset or 0)
+	local run_stale = st.diag_stale - (st.diag_run_stale or 0)
+	if run_skewed == 0 and run_reset == 0 and run_stale == 0 then
+		return
+	end
+	st.diag_shown_skewed = st.diag_skewed
+	st.diag_shown_reset = st.diag_reset
+	st.diag_shown_stale = st.diag_stale
+	mod:echo("NoBrainer balance diag run: skewed=%d reset=%d stale=%d (total %d/%d/%d)",
+		run_skewed, run_reset, run_stale,
+		st.diag_skewed, st.diag_reset, st.diag_stale)
+end
+
 local function on_update(dt)
 	if not balance_active then return end
 
@@ -403,17 +440,16 @@ local function on_update(dt)
 		st.diag_timer = st.diag_timer - dt
 		if st.diag_timer <= 0 then
 			st.diag_timer = DIAGNOSTIC_INTERVAL
-			if st.diag_skewed > 0 or st.diag_reset > 0 or st.diag_stale > 0 then
-				-- 临时：真机观察期用 echo（DMF 默认 echo = 日志 + 聊天框），量完换回 mod:info。
-				mod:echo("NoBrainer balance diag: skewed=%d reset=%d stale=%d",
-					st.diag_skewed, st.diag_reset, st.diag_stale)
-			end
+			_diag_report(nil)
 		end
 	end
 end
 
 local function _arm_balance_session(mg, restart_until, previous_x, previous_y, previous_at, sample_x, sample_y, sample_at)
 	_reset_balance_tracking()
+	st.diag_run_skewed = st.diag_skewed
+	st.diag_run_reset = st.diag_reset
+	st.diag_run_stale = st.diag_stale
 	balance_active = true
 	active_balance_mg = mg
 	st.active = true
@@ -483,6 +519,7 @@ mod:hook_safe("MinigameBalance", "start", function(self, player)
 end)
 
 _balance_cleanup = function()
+	_diag_report_run()
 	balance_active = false
 	active_balance_mg = nil
 	balance_stopped_mg = nil

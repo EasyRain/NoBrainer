@@ -11,6 +11,14 @@ luajit tools/smoke_balance.lua                     # 用桩在游戏外跑 balan
 luajit tools/smoke_balance.lua <另一份模块路径>      # 对比另一份（例如 git show <基线>:... 导出的）
 ```
 
+`luajit` **不在 PATH 上**，本机装在 `D:\Tools\Lua\luajit\src\luajit.exe`（同目录还有 `lua55.exe`、`luac55.exe`）。
+实际跑法：
+
+```powershell
+cd D:\DshWorkSpace\Darktide\repos\nobrainer
+& D:\Tools\Lua\luajit\src\luajit.exe tools\smoke_balance.lua
+```
+
 它钉住三件事：样本时间没前进时**保留**速度估计（而不是清零）、真正断档仍然重置、
 命令环在乱序 `apply_time` 下**覆盖环头**且不回退。对基线（`5b2528c`）跑会有 6 条失败。
 
