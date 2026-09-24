@@ -266,7 +266,11 @@ local function _balance(action, result, source)
 	if not _is_movement_action(action) then return result end
 	if not S("enable_balance") then return result end
 	local bal = mod._bal
-	if not bal or not bal.active or bal.timer <= 0 or not bal.enabled then
+	if not bal or not bal.active or not bal.enabled then
+		return result
+	end
+	if bal.timer <= 0 then
+		bal.diag_stale = (bal.diag_stale or 0) + 1
 		return result
 	end
 	if not _minigame_view_active() then

@@ -20,6 +20,10 @@ local COMMAND_HISTORY_SIZE = 48
 local PREDICTIVE_GAIN = 0.35
 local BALANCE_RESTART_RECOVERY_TIMEOUT = 1.2
 
+-- 上机量数据用：只加计数和一行日志，不改变任何行为。量完把 DIAGNOSTICS 改成 false。
+local DIAGNOSTICS = true
+local DIAGNOSTIC_INTERVAL = 10
+
 mod._bal = {
 	timer    = 0,
 	active   = false,
@@ -48,15 +52,21 @@ mod._bal = {
 	command_recorded_time = nil,
 	correction_x = 0, correction_y = 0,
 	safety_active = false,
+	-- 诊断计数（DIAGNOSTICS 关闭时也无害；刻意不在 _reset_balance_tracking 里清零，
+	-- 因为要看的是整局累计）
+	diag_skewed = 0,   -- 收到"时间没前进"的样本而被丢弃的次数（修复前会清零速度）
+	diag_reset = 0,    -- estimate 被重置（含 dt > SAMPLE_TIMEOUT）的次数
+	diag_stale = 0,    -- 输入闸门因新鲜度窗口到期而放手的次数
+	diag_timer = 0,
 }
 
 local st = mod._bal
 local balance_active = false
-local active_balance_key = nil
+local active_balance_mg = nil
 local _balance_cleanup
-local balance_stopped_key = nil
+local balance_stopped_mg = nil
 local balance_stopped_until = 0
-local balance_restart_key = nil
+local balance_restart_mg = nil
 local balance_restart_until = 0
 local balance_restart_stop_seen = false
 local balance_restart_stop_at = 0
@@ -68,7 +78,7 @@ local balance_restart_sample_y = nil
 local balance_restart_sample_at = nil
 
 local function _is_active_balance_mg(mg)
-	return mg ~= nil and active_balance_key == tostring(mg)
+	return mg ~= nil and active_balance_mg == mg
 end
 
 local function _scanner_view_active()
@@ -140,6 +150,15 @@ end
 
 local function _record_command(apply_time, correction_x, correction_y)
 	if not apply_time then return end
+
+	-- 命令环必须时间递增：_command_at 从 head 往回扫，假定时间是递减的。晚到/重复的
+	-- apply_time（_commit_predictive_command 会用缓存的 correction_apply_time）会破坏这个
+	-- 假设，让查询取到过期指令、也无法提前退出。BetterBrainer 的 record() 同样做单调钳制。
+	if st.command_count > 0 and apply_time <= st.command_times[st.command_head] then
+		st.command_xs[st.command_head] = correction_x
+		st.command_ys[st.command_head] = correction_y
+		return
+	end
 
 	local head = st.command_head % COMMAND_HISTORY_SIZE + 1
 	st.command_head = head
@@ -226,7 +245,16 @@ local function _process_predictive_sample()
 	local measurement_time = now - (st.rtt or 0) * 0.5
 	local dt = st.estimate_time and measurement_time - st.estimate_time or 0
 
+	-- BetterBrainer 1.0.1 的修复：样本时间没有前进（重复/乱序的 RPC 收据，或 RTT 下降把
+	-- estimate_time 往回平移）就丢掉这个样本、保留现有速度估计。原来它会掉进下面那个分支
+	-- 把速度清零，表现正是"刚收到网络更新反而短暂不修正"。
+	if st.estimate_time and measurement_time <= st.estimate_time then
+		st.diag_skewed = st.diag_skewed + 1
+		return
+	end
+
 	if not st.observer_ready or dt <= 0 or dt > SAMPLE_TIMEOUT then
+		st.diag_reset = st.diag_reset + 1
 		st.estimate_x, st.estimate_y = x, y
 		st.estimate_vx, st.estimate_vy = 0, 0
 		st.observer_ready = true
@@ -332,7 +360,7 @@ end)
 mod:hook_safe("MinigameBalance", "set_position", function(self, x, y)
 	if balance_active and _is_active_balance_mg(self) then
 		_queue_predictive_sample(x, y, true)
-	elseif balance_restart_key == tostring(self) and balance_restart_stop_seen then
+	elseif balance_restart_mg == self and balance_restart_stop_seen then
 		local now = mod._time("gameplay")
 		if now and now >= balance_restart_stop_at and now <= balance_restart_until then
 			balance_restart_prev_x = balance_restart_sample_x
@@ -371,17 +399,27 @@ local function on_update(dt)
 		end
 	end
 
+	if DIAGNOSTICS then
+		st.diag_timer = st.diag_timer - dt
+		if st.diag_timer <= 0 then
+			st.diag_timer = DIAGNOSTIC_INTERVAL
+			if st.diag_skewed > 0 or st.diag_reset > 0 or st.diag_stale > 0 then
+				mod:info("NoBrainer balance diag: skewed=%d reset=%d stale=%d",
+					st.diag_skewed, st.diag_reset, st.diag_stale)
+			end
+		end
+	end
 end
 
 local function _arm_balance_session(mg, restart_until, previous_x, previous_y, previous_at, sample_x, sample_y, sample_at)
 	_reset_balance_tracking()
 	balance_active = true
-	active_balance_key = tostring(mg)
+	active_balance_mg = mg
 	st.active = true
 	st.enabled = true
-	balance_stopped_key = nil
+	balance_stopped_mg = nil
 	balance_stopped_until = 0
-	balance_restart_key = nil
+	balance_restart_mg = nil
 	balance_restart_until = restart_until or 0
 	balance_restart_stop_seen = false
 	balance_restart_stop_at = 0
@@ -415,8 +453,8 @@ end
 mod:hook_safe("MinigameBalance", "start", function(self, player)
 	if not mod._is_local_minigame_player(player) then
 		if balance_active and _is_active_balance_mg(self)
-			or balance_restart_key and balance_restart_key == tostring(self)
-			or balance_stopped_key and balance_stopped_key == tostring(self)
+			or balance_restart_mg and balance_restart_mg == self
+			or balance_stopped_mg and balance_stopped_mg == self
 		then
 			_balance_cleanup()
 		end
@@ -430,13 +468,13 @@ mod:hook_safe("MinigameBalance", "start", function(self, player)
 	local now = mod._time("gameplay")
 	local quick_restart = self._is_server ~= true
 		and now ~= nil
-		and balance_stopped_key == tostring(self)
+		and balance_stopped_mg == self
 		and now <= balance_stopped_until
 	local restart_until = quick_restart and now + BALANCE_RESTART_RECOVERY_TIMEOUT or 0
 
 	if quick_restart then
 		_balance_cleanup()
-		balance_restart_key = tostring(self)
+		balance_restart_mg = self
 		balance_restart_until = restart_until
 	else
 		_arm_balance_session(self, restart_until)
@@ -445,10 +483,10 @@ end)
 
 _balance_cleanup = function()
 	balance_active = false
-	active_balance_key = nil
-	balance_stopped_key = nil
+	active_balance_mg = nil
+	balance_stopped_mg = nil
 	balance_stopped_until = 0
-	balance_restart_key = nil
+	balance_restart_mg = nil
 	balance_restart_until = 0
 	balance_restart_stop_seen = false
 	balance_restart_stop_at = 0
@@ -463,7 +501,7 @@ _balance_cleanup = function()
 end
 
 mod:hook_safe("MinigameBalance", "stop", function(self, ...)
-	local key = tostring(self)
+	local key = self
 	local active = _is_active_balance_mg(self)
 	local player = select(1, ...)
 	local arg_count = select("#", ...)
@@ -472,8 +510,8 @@ mod:hook_safe("MinigameBalance", "stop", function(self, ...)
 	local stale_stop_before_restart = arg_count == 0
 		and not active
 		and self._is_server ~= true
-		and balance_stopped_key == key
-	local recoverable_restart = (active or balance_restart_key == key)
+		and balance_stopped_mg == key
+	local recoverable_restart = (active or balance_restart_mg == key)
 		and arg_count == 0
 		and self._is_server ~= true
 		and not (self.is_completed and self:is_completed())
@@ -481,31 +519,31 @@ mod:hook_safe("MinigameBalance", "stop", function(self, ...)
 		and now <= balance_restart_until
 	local restart_until = balance_restart_until
 
-	if active or balance_restart_key == key then
+	if active or balance_restart_mg == key then
 		_balance_cleanup()
 	end
 
 	if local_stop and self._is_server ~= true and now then
-		balance_stopped_key = key
+		balance_stopped_mg = key
 		balance_stopped_until = now + BALANCE_RESTART_RECOVERY_TIMEOUT
 	elseif stale_stop_before_restart then
-		balance_stopped_key = nil
+		balance_stopped_mg = nil
 		balance_stopped_until = 0
 	elseif recoverable_restart then
-		balance_restart_key = key
+		balance_restart_mg = key
 		balance_restart_until = restart_until
 		balance_restart_stop_seen = true
 		balance_restart_stop_at = now
 	end
 end)
 mod:hook_safe("MinigameBalance", "complete", function(self)
-	if _is_active_balance_mg(self) or balance_restart_key == tostring(self) then
+	if _is_active_balance_mg(self) or balance_restart_mg == self then
 		_balance_cleanup()
 	end
 end)
 
 function mod._bal_rearm_from_state(state, t)
-	if not balance_restart_key then return end
+	if not balance_restart_mg then return end
 
 	local now = t or mod._time("gameplay")
 	if not now or now > balance_restart_until then
@@ -517,7 +555,7 @@ function mod._bal_rearm_from_state(state, t)
 
 	local mg = state and state._minigame
 	local player = state and state._player
-	if not mg or tostring(mg) ~= balance_restart_key then return end
+	if not mg or mg ~= balance_restart_mg then return end
 	if mg._is_server == true or not mod._is_local_minigame_player(player) or not _scanner_view_active() then return end
 	if mg.is_completed and mg:is_completed() then return end
 	local game_state = mg.state and mg:state()
