@@ -107,6 +107,34 @@ def parse_log(path, mod_name):
     return applied, delayed, resolved, err_method, err_object
 
 
+def session_evidence(log_path):
+    """这份日志够不够用来判定钩子失效？
+
+    延迟钩子和按路径注册的钩子要等游戏把对应模块 require 进来才会出现
+    （视图 / AuspexScanningEffects / MinigameSystem 都是进游戏后才有）。所以
+    "刚重启、只待了一会儿"的日志必然一堆 DEAD/MISSING —— 那是没跑到，不是坏了。
+    返回（日志跨度秒数，进图标记次数）。
+    """
+    stamps = []
+    mission_markers = 0
+    time_pattern = re.compile(r"^(\d{2}):(\d{2}):(\d{2})\.\d{3}")
+    with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            m = time_pattern.match(line)
+            if m:
+                stamps.append(int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)))
+            if "num_missions_started" in line:
+                mission_markers += 1
+
+    if len(stamps) < 2:
+        return 0, mission_markers
+
+    duration = stamps[-1] - stamps[0]
+    if duration < 0:          # 跨过午夜
+        duration += 24 * 3600
+    return duration, mission_markers
+
+
 def main(argv):
     mod_name = "NoBrainer"
     args = list(argv[1:])
@@ -126,7 +154,12 @@ def main(argv):
     for class_name, method in applied:
         methods_seen.setdefault(method, set()).add(class_name)
 
+    duration, mission_markers = session_evidence(log_path)
+    weak = duration < 180 or mission_markers == 0
+
     print(f"仓库里注册的钩子: {len(hooks)}   日志: {os.path.basename(log_path)}   mod: {mod_name}")
+    print(f"日志跨度 {duration // 60} 分 {duration % 60} 秒，进图标记 {mission_markers} 次"
+          + ("   ⚠️ 太短，DEAD/MISSING 不能当结论" if weak else ""))
     print()
 
     counts = {"OK": 0, "OK(延迟后挂上)": 0, "DEAD": 0, "ERROR": 0, "MISSING": 0}
@@ -157,6 +190,10 @@ def main(argv):
     print()
     print("统计: " + "  ".join(f"{k}={v}" for k, v in counts.items() if v))
     bad = counts["DEAD"] + counts["ERROR"] + counts["MISSING"]
+    if weak:
+        print("⚠️ 这份日志太短（或没进过图）：上面的 DEAD/MISSING 绝大多数只是还没跑到，不能当成钩子失效。")
+        print("   拿一份真正打完一局的日志再跑一次；只有 ERROR 行在任何长度下都算真问题。")
+        return 1 if counts["ERROR"] else 0
     if bad:
         print(f"有 {bad} 个钩子需要看：DEAD 多半是类被改名，ERROR 是方法被改名，MISSING 得先确认这份日志跑过没有。")
     return 1 if bad else 0
