@@ -38,6 +38,11 @@ python (Join-Path $tools 'check_hooks.py')
 if ($LASTEXITCODE -ne 0) { $failed++ }
 
 Write-Host ''
+Write-Host '== 3) 设置项体检（设置项 / 本地化键对得上吗） ==' -ForegroundColor Cyan
+python (Join-Path $tools 'check_settings.py')
+if ($LASTEXITCODE -ne 0) { $failed++ }
+
+Write-Host ''
 if ($failed -eq 0) {
     Write-Host '全部通过' -ForegroundColor Green
 } else {
