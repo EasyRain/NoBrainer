@@ -208,6 +208,122 @@ local function probe_paths()
     end
 end
 
+-- ---- 反射：目标函数的参数名与来源（写 spawner 之前把"要传什么"问出来）-------------------------
+local SIGNATURE_TARGETS = {
+    { "MinigameBalance", { "new", "init", "setup_game", "start", "stop", "set_position", "position",
+        "set_state", "complete", "update", "unit", "on_axis_set", "handle_state" } },
+    { "MinigameExtension", { "new", "init", "setup_minigame", "set_active", "is_active", "minigame",
+        "minigame_type", "on_add_extension", "on_game_object_created", "setup_from_component", "update" } },
+    { "MinigameSystem", { "new", "init", "set_unit_local", "on_add_extension", "rpc_minigame_extension_sync_active",
+        "rpc_minigame_sync_start", "rpc_minigame_sync_stop", "rpc_minigame_sync_balance_set_position",
+        "rpc_minigame_sync_game_state", "unit_server_correction_occurred" } },
+    { "PlayerCharacterStateMinigame", { "new", "init", "on_enter", "on_exit", "minigame",
+        "_check_initialize_minigame_from_unit", "_check_initialize_minigame_from_gamemode",
+        "_queue_minigame_initialization", "_deinitialize_minigame", "_is_minigame_active",
+        "_is_wielding_minigame_device", "_update_input" } },
+    { "MinigameBase", { "new", "init", "setup_game", "start", "stop", "set_state", "send_rpc" } },
+}
+
+local function signature(label, fn)
+    if type(fn) ~= "function" then
+        mod:info("[probe]   %-52s not a function (%s)", label, type(fn))
+        return
+    end
+    local ok, info = pcall(debug.getinfo, fn, "Sun")
+    if not ok or type(info) ~= "table" then
+        mod:info("[probe]   %-52s (no debug info)", label)
+        return
+    end
+    local names = {}
+    for index = 1, (info.nparams or 0) do
+        local name_ok, name = pcall(debug.getlocal, fn, index)
+        names[#names + 1] = tostring(name_ok and name or ("arg" .. index))
+    end
+    local varargs = info.isvararg and "..." or ""
+    mod:info("[probe]   %-46s (%s%s)   [%s]", label, table.concat(names, ", "), varargs,
+        tostring(info.source):gsub("^@", ""))
+end
+
+local function probe_signatures()
+    for _, entry in ipairs(SIGNATURE_TARGETS) do
+        local class_name, methods = entry[1], entry[2]
+        local class = rawget(_G, class_name)
+        mod:info("[probe] signature %s: %s", class_name, type(class))
+        if type(class) == "table" then
+            for _, method in ipairs(methods) do
+                signature(class_name .. "." .. method, class[method])
+            end
+        end
+    end
+end
+
+local function probe_unit_extensions()
+    local players = Managers.player
+    local player = players and players:local_player_safe(1)
+    local unit = player and player.player_unit
+    if not unit or not Unit.alive(unit) then
+        mod:info("[probe] unit section: no unit")
+        return
+    end
+    for _, name in ipairs({ "minigame_system", "character_state_machine_system", "unit_data_system" }) do
+        local ok, extension = pcall(ScriptUnit.has_extension, unit, name)
+        mod:info("[probe] ScriptUnit.has_extension(%s) = %s", name, tostring(ok and extension or ("err:" .. tostring(extension))))
+        if ok and type(extension) == "table" and name == "minigame_system" then
+            dump_table("[probe]   minigame extension", extension, 0)
+            for _, method in ipairs({ "minigame", "minigame_type", "is_active", "set_active", "setup_minigame" }) do
+                signature("player.minigame_system:" .. method, extension[method])
+            end
+        end
+        if ok and type(extension) == "table" and name == "character_state_machine_system" then
+            local methods = {}
+            local mt = getmetatable(extension)
+            if type(mt) == "table" and type(mt.__index) == "table" then
+                for key, value in pairs(mt.__index) do
+                    if type(value) == "function" then methods[#methods + 1] = tostring(key) end
+                end
+            end
+            table.sort(methods)
+            mod:info("[probe]   CSM methods: %s", table.concat(methods, ", "):sub(1, 1200))
+        end
+    end
+end
+
+local function probe_system_instance()
+    local manager = Managers.state and Managers.state.extension
+    if not (manager and type(manager.system) == "function") then
+        return
+    end
+    local ok, system = pcall(manager.system, manager, "minigame_system")
+    mod:info("[probe] extension manager:system('minigame_system') = %s", tostring(ok and system or ("err:" .. tostring(system))))
+    if ok and type(system) == "table" then
+        for key, value in pairs(system) do
+            if type(value) ~= "function" then
+                mod:info("[probe]   system.%s = %s (%s)", tostring(key), tostring(value), type(value))
+            end
+        end
+        signature("MinigameSystem:set_unit_local", system.set_unit_local)
+        signature("MinigameSystem:default_minigame_type", system.default_minigame_type)
+    end
+end
+
+-- 唯一会"动手"的一段：用空 context 试着构造 MinigameBalance，只看它报什么错（pcall，不留状态）。
+local function probe_construct()
+    local class = rawget(_G, "MinigameBalance")
+    if type(class) ~= "table" or type(class.new) ~= "function" then
+        mod:info("[probe] MinigameBalance:new not available")
+        return
+    end
+    local ok, result = pcall(class.new, class, {})
+    mod:info("[probe] MinigameBalance:new({}) -> ok=%s result=%s", tostring(ok), tostring(result))
+    if ok and type(result) == "table" then
+        dump_table("[probe]   constructed instance", result, 0)
+    end
+    local players = Managers.player
+    local player = players and players:local_player_safe(1)
+    local ok2, result2 = pcall(class.new, class, { player = player, is_server = false })
+    mod:info("[probe] MinigameBalance:new({player=..., is_server=false}) -> ok=%s result=%s", tostring(ok2), tostring(result2))
+end
+
 local function probe_current_state()
     local players = Managers.player
     local player = players and players:local_player_safe(1)
@@ -247,6 +363,23 @@ mod:command("mg_probe", "dump the minigame API to the log (read-only)", function
     if not ok then mod:info("[probe] state section failed: %s", tostring(err)) end
     mod:info("======== MinigameProbe dump end ========")
     mod:echo("MinigameProbe: dumped to the log (see console_logs)")
+end)
+
+-- /mg_sig —— 写 spawner 之前把"要传什么参数"问出来（反射，外加一次 pcall 构造尝试）。
+-- 与 /mg_probe 分开：这一段会调用一次 MinigameBalance:new({})（pcall 包着，只为读错误信息），
+-- 所以不放进只读的那条命令里。
+mod:command("mg_sig", "dump target function signatures and try constructing a minigame (read-only except one pcall)", function()
+    mod:info("======== MinigameProbe signatures ========")
+    local ok, err = pcall(probe_signatures)
+    if not ok then mod:info("[probe] signature section failed: %s", tostring(err)) end
+    ok, err = pcall(probe_unit_extensions)
+    if not ok then mod:info("[probe] unit extension section failed: %s", tostring(err)) end
+    ok, err = pcall(probe_system_instance)
+    if not ok then mod:info("[probe] system section failed: %s", tostring(err)) end
+    ok, err = pcall(probe_construct)
+    if not ok then mod:info("[probe] construct section failed: %s", tostring(err)) end
+    mod:info("======== MinigameProbe signatures end ========")
+    mod:echo("MinigameProbe: signature dump written to the log")
 end)
 
 mod:command("mg_obj", "dump the running minigame object, if any (read-only)", function()
