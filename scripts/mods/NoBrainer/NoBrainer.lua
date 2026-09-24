@@ -265,30 +265,43 @@ end)
 -- 调试用：核对"游戏声明的类型"和"真正注册可用的类型"。
 -- 判断依据是 scripts/settings/minigame/minigame_classes.lua —— 它把类型映射到实现类；
 -- **没在里面注册的类型，游戏永远开不起来**（例如疑似官方废案的 frequency）。
--- 只在打开 "Write Debug Log" 时跑，正常游玩完全不执行。
-if mod._S("enable_debug_messages") then
+--
+-- 注意：不能在 mod load 时做。那时 DMF 还没把用户设置交进来，mod._S() 会把
+-- enable_debug_messages 缓存成默认值 false，整块就被跳过（2026-09-24 实测踩到）。
+-- 改成第一个 update tick 检查一次；开关没开就永远不跑。
+local _minigame_audit_done = false
+mod._reg("update", function()
+	if _minigame_audit_done or not mod._S("enable_debug_messages") then
+		return
+	end
+
+	_minigame_audit_done = true
+
 	local ok_settings, minigame_settings = pcall(require, "scripts/settings/minigame/minigame_settings")
 	local ok_classes, minigame_classes = pcall(require, "scripts/settings/minigame/minigame_classes")
 
 	if not ok_settings or type(minigame_settings) ~= "table" then
 		mod._debug("minigame audit: could not read minigame_settings")
-	elseif not ok_classes or type(minigame_classes) ~= "table" then
-		mod._debug("minigame audit: could not read minigame_classes")
-	else
-		local registered, unregistered = {}, {}
-
-		for minigame_type in pairs(minigame_settings.types or {}) do
-			if minigame_classes[minigame_type] ~= nil then
-				registered[#registered + 1] = minigame_type
-			else
-				unregistered[#unregistered + 1] = minigame_type
-			end
-		end
-
-		table.sort(registered)
-		table.sort(unregistered)
-		mod._debug("minigame audit: registered = %s", table.concat(registered, ", "))
-		mod._debug("minigame audit: NOT registered (dead content) = %s",
-			#unregistered > 0 and table.concat(unregistered, ", ") or "(none)")
+		return
 	end
-end
+	if not ok_classes or type(minigame_classes) ~= "table" then
+		mod._debug("minigame audit: could not read minigame_classes")
+		return
+	end
+
+	local registered, unregistered = {}, {}
+
+	for minigame_type in pairs(minigame_settings.types or {}) do
+		if minigame_classes[minigame_type] ~= nil then
+			registered[#registered + 1] = minigame_type
+		else
+			unregistered[#unregistered + 1] = minigame_type
+		end
+	end
+
+	table.sort(registered)
+	table.sort(unregistered)
+	mod._debug("minigame audit: registered = %s", table.concat(registered, ", "))
+	mod._debug("minigame audit: NOT registered (dead content) = %s",
+		#unregistered > 0 and table.concat(unregistered, ", ") or "(none)")
+end)
