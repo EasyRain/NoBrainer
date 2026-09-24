@@ -762,6 +762,37 @@ function mod._bal_predictive_correction(record_command)
 	return correction_x, correction_y
 end
 
+-- ===== 临时诊断（真机观察期用，量完删）：所有小游戏类型的"在场"轨迹 =====
+-- 只读各模块自己的状态字段（和 _any_minigame_active 同一套判据），不改任何逻辑。
+-- 进入/退出各打一行，这样别的地图、别的小游戏也能从日志里看出"哪一类真的跑过、跑了多久"。
+if DIAGNOSTICS then
+	local presence_last = nil
+
+	local function _presence_now()
+		local bal = mod._bal
+		local ds = mod._ds
+		local search = mod._exp
+		local drill = mod._drill
+		local freq = mod._freq
+		local parts = {}
+
+		if bal and bal.active and bal.enabled and (bal.timer or 0) > 0 then parts[#parts + 1] = "balance" end
+		if ds and ds.active and (ds.timer or 0) > 0 then parts[#parts + 1] = "decode_symbols" end
+		if search and search.session_active and search.active and (search.timer or 0) > 0 then parts[#parts + 1] = "decode_search" end
+		if drill and drill.session_active and drill.session_ready and drill.active and (drill.timer or 0) > 0 then parts[#parts + 1] = "drill" end
+		if freq and freq.session_active and freq.active and (freq.timer or 0) > 0 then parts[#parts + 1] = "frequency" end
+
+		return table.concat(parts, "+")
+	end
+
+	mod._reg("update", function()
+		local ok, signature = pcall(_presence_now)
+		if not ok or signature == presence_last then return end
+		presence_last = signature
+		mod:echo("NoBrainer minigame presence: %s", signature == "" and "none" or signature)
+	end)
+end
+
 -- ===== 临时诊断（真机观察期用，量完删）=====
 -- 每个小游戏类的 start 钩子里各加一行打印，用来确认"哪种小游戏真的开过"。
 -- 这里只置一个共享开关，别的模块读它；不改任何逻辑。
