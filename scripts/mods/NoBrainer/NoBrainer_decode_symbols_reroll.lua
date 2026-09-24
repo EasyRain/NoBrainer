@@ -27,6 +27,8 @@ local extension_initial_seeds = setmetatable({}, { __mode = "k" })
 local distribution_cache = {}
 local distribution_cache_entries = 0
 
+-- minigame_key = 小游戏对象本身（引用比较），不是 tostring。别改回去：字符串要每次新建，
+-- 而且对象回收后地址复用会让两个不同的小游戏"看起来"相等。
 local state = {
     phase = "idle",
     attempts = 0,
@@ -390,7 +392,7 @@ local function board_matches(minigame, board)
 end
 
 function mod._ds_reroll_predicted_sync_ready(minigame, previous_start_time)
-    if state.phase ~= "evaluating" or state.minigame_key ~= tostring(minigame) or not state.expected_board then
+    if state.phase ~= "evaluating" or state.minigame_key ~= minigame or not state.expected_board then
         return false
     end
 
@@ -513,7 +515,7 @@ local function begin_evaluation(minigame, preserve_attempts)
     end
 
     state.phase = "evaluating"
-    state.minigame_key = tostring(minigame)
+    state.minigame_key = minigame
     state.terminal = minigame._minigame_unit
     state.deadline = game_time + BOARD_SYNC_TIMEOUT
     state.evaluated_start_time = nil
@@ -526,7 +528,7 @@ function mod._ds_reroll_start(minigame)
         return
     end
 
-    local key = tostring(minigame)
+    local key = minigame
     local terminal = minigame and minigame._minigame_unit
     local same_session = state.minigame_key == key and state.terminal == terminal
     if same_session and (state.phase == "cancel_sent" or state.phase == "await_server_stop") then
@@ -544,7 +546,7 @@ function mod._ds_reroll_start(minigame)
 end
 
 function mod._ds_reroll_stop(minigame, stop_arg)
-    if state.minigame_key ~= tostring(minigame) then
+    if state.minigame_key ~= minigame then
         return
     end
 
@@ -568,13 +570,13 @@ function mod._ds_reroll_stop(minigame, stop_arg)
 end
 
 function mod._ds_reroll_complete(minigame)
-    if state.minigame_key == tostring(minigame) then
+    if state.minigame_key == minigame then
         reset_state(true)
     end
 end
 
 function mod._ds_reroll_abort(minigame)
-    if state.minigame_key == tostring(minigame) then
+    if state.minigame_key == minigame then
         reset_state(true)
     end
 end
@@ -593,7 +595,7 @@ function mod._ds_reroll_blocks_solver()
 end
 
 function mod._ds_reroll_evaluate(minigame, game_time, sync_ready)
-    if state.phase ~= "evaluating" or state.minigame_key ~= tostring(minigame) then
+    if state.phase ~= "evaluating" or state.minigame_key ~= minigame then
         return mod._ds_reroll_blocks_solver()
     end
 

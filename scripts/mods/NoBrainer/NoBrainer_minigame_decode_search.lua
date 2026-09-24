@@ -26,6 +26,8 @@ local SEARCH_STARTUP_DELAY = 0.20
 local SEARCH_RESTART_RECOVERY_TIMEOUT = 1.2
 local _find_target
 local search_active = false
+-- 会话键 = 小游戏对象本身（引用比较）。别改回 tostring(x)：那是新建字符串，
+-- 而且对象被回收后地址复用会让两个不同的小游戏"看起来"相等。
 local active_search_key = nil
 local search_completed = false
 local search_restart_key = nil
@@ -180,13 +182,13 @@ local function _snapshot_fresh()
 end
 
 local function _is_active_search_mg(mg)
-	return search_active and mg ~= nil and active_search_key == tostring(mg)
+	return search_active and mg ~= nil and active_search_key == mg
 end
 
 local function _sample_search(mg)
 	local exp = mod._exp
 	if not exp then return end
-	local key = mg and tostring(mg) or nil
+	local key = mg
 
 	if key and exp.key and exp.key ~= key then
 		_clear_pending_move()
@@ -591,7 +593,7 @@ local function _arm_search_session(mg, restart_until)
 	mod._exp_prev_cursor = nil
 	mod._exp_last_move_at = 0
 	search_active = true
-	active_search_key = tostring(mg)
+	active_search_key = mg
 	search_completed = false
 	search_restart_key = nil
 	search_restart_until = restart_until or (now and now + SEARCH_RESTART_RECOVERY_TIMEOUT or 0)
@@ -608,7 +610,7 @@ end
 mod:hook_safe("MinigameDecodeSearch", "start", function(self, player)
 	if not mod._is_local_minigame_player(player) then
 		if search_active and _is_active_search_mg(self)
-			or search_restart_key and search_restart_key == tostring(self)
+			or search_restart_key and search_restart_key == self
 		then
 			_exp_cleanup("ownership_transferred")
 		end
@@ -647,7 +649,7 @@ mod:hook("MinigameDecodeSearch", "stop", function(func, self, ...)
 			_exp_cleanup(cleanup_reason)
 
 			if recoverable_restart then
-				search_restart_key = tostring(self)
+				search_restart_key = self
 				search_restart_until = restart_until
 			end
 		end
@@ -659,7 +661,7 @@ mod:hook("MinigameDecodeSearch", "stop", function(func, self, ...)
 	end
 end)
 mod:hook_safe("MinigameDecodeSearch", "complete", function(self)
-	if _is_active_search_mg(self) or search_restart_key == tostring(self) then
+	if _is_active_search_mg(self) or search_restart_key == self then
 		_exp_cleanup("complete")
 	end
 end)
@@ -679,7 +681,7 @@ function mod._exp_rearm_from_state(state, t)
 
 	local mg = state and state._minigame
 	local player = state and state._player
-	if not mg or tostring(mg) ~= search_restart_key then return end
+	if not mg or mg ~= search_restart_key then return end
 	if not mod._is_local_minigame_player(player) or not _scanner_view_active() then return end
 	if mg.is_completed and mg:is_completed() or not _is_gameplay(mg) then return end
 

@@ -32,6 +32,8 @@ local ARROW_SPECS = {
     y = { offset = { -240, ARROW_TOP_Y, ARROW_DEPTH } },
 }
 local frequency_active = false
+-- 会话键 = 小游戏对象本身（引用比较）。别改回 tostring(x)：那是新建字符串，
+-- 而且对象被回收后地址复用会让两个不同的小游戏"看起来"相等。
 local active_frequency_key = nil
 local frequency_completed = false
 local frequency_stopped_key = nil
@@ -78,7 +80,7 @@ local function _snapshot_fresh()
 end
 
 local function _is_active_frequency_mg(mg)
-	return mg ~= nil and active_frequency_key == tostring(mg)
+	return mg ~= nil and active_frequency_key == mg
 end
 
 local function _stage(mg)
@@ -132,7 +134,7 @@ end
 local function _sample_frequency(mg, allow_server_fallback)
     local freq = mod._freq
     if not freq then return end
-	local key = mg and tostring(mg) or nil
+	local key = mg
 
 	if key and freq.key and freq.key ~= key then
 		_reset_frequency_timing()
@@ -360,7 +362,7 @@ end
 
 local function _arm_frequency_session(mg, restart_until)
 	frequency_active = true
-	active_frequency_key = tostring(mg)
+	active_frequency_key = mg
 	frequency_completed = false
 	frequency_stopped_key = nil
 	frequency_stopped_until = 0
@@ -381,8 +383,8 @@ end
 mod:hook_safe("MinigameFrequency", "start", function(self, player)
 	if not mod._is_local_minigame_player(player) then
 		if frequency_active and _is_active_frequency_mg(self)
-			or frequency_restart_key and frequency_restart_key == tostring(self)
-			or frequency_stopped_key and frequency_stopped_key == tostring(self)
+			or frequency_restart_key and frequency_restart_key == self
+			or frequency_stopped_key and frequency_stopped_key == self
 		then
 			_freq_cleanup("ownership_transferred")
 		end
@@ -396,13 +398,13 @@ mod:hook_safe("MinigameFrequency", "start", function(self, player)
 	local now = mod._time("gameplay")
 	local quick_restart = self._is_server ~= true
 		and now ~= nil
-		and frequency_stopped_key == tostring(self)
+		and frequency_stopped_key == self
 		and now <= frequency_stopped_until
 	local restart_until = quick_restart and now + FREQUENCY_RESTART_RECOVERY_TIMEOUT or 0
 
 	if quick_restart then
 		_freq_cleanup("restart_sync")
-		frequency_restart_key = tostring(self)
+		frequency_restart_key = self
 		frequency_restart_until = restart_until
 	else
 		_arm_frequency_session(self, restart_until)
@@ -410,7 +412,7 @@ mod:hook_safe("MinigameFrequency", "start", function(self, player)
 end)
 
 mod:hook_safe("MinigameFrequency", "stop", function(self, ...)
-	local key = tostring(self)
+	local key = self
 	local active = _is_active_frequency_mg(self)
 	local player = select(1, ...)
 	local arg_count = select("#", ...)
@@ -445,13 +447,13 @@ mod:hook_safe("MinigameFrequency", "stop", function(self, ...)
 	end
 end)
 mod:hook_safe("MinigameFrequency", "complete", function(self)
-	if _is_active_frequency_mg(self) or frequency_restart_key == tostring(self) then
+	if _is_active_frequency_mg(self) or frequency_restart_key == self then
 		_freq_cleanup("complete")
 	end
 end)
 
 mod:hook_safe("MinigameFrequency", "generate_board", function(self)
-	if frequency_restart_key == tostring(self) and frequency_restart_stop_seen then
+	if frequency_restart_key == self and frequency_restart_stop_seen then
 		frequency_restart_board_fresh = true
 		frequency_restart_stage_fresh = false
 		frequency_restart_target_fresh = false
@@ -459,14 +461,14 @@ mod:hook_safe("MinigameFrequency", "generate_board", function(self)
 end)
 
 mod:hook_safe("MinigameFrequency", "set_current_stage", function(self, stage)
-	if frequency_restart_key == tostring(self) and frequency_restart_stop_seen and frequency_restart_board_fresh and stage == 1 then
+	if frequency_restart_key == self and frequency_restart_stop_seen and frequency_restart_board_fresh and stage == 1 then
 		frequency_restart_stage_fresh = true
 		frequency_restart_target_fresh = false
 	end
 end)
 
 mod:hook_safe("MinigameFrequency", "set_target_frequency", function(self)
-	if frequency_restart_key == tostring(self) and frequency_restart_stop_seen and frequency_restart_board_fresh and frequency_restart_stage_fresh then
+	if frequency_restart_key == self and frequency_restart_stop_seen and frequency_restart_board_fresh and frequency_restart_stage_fresh then
 		frequency_restart_target_fresh = true
 	end
 end)
@@ -485,7 +487,7 @@ function mod._freq_rearm_from_state(state, t)
 
 	local mg = state and state._minigame
 	local player = state and state._player
-	if not mg or tostring(mg) ~= frequency_restart_key then return end
+	if not mg or mg ~= frequency_restart_key then return end
 	if mg._is_server == true or not mod._is_local_minigame_player(player) or not _scanner_view_active() then return end
 	if mg.is_completed and mg:is_completed() or not _is_gameplay(mg) then return end
 	local unit = mg._minigame_unit

@@ -144,6 +144,8 @@ mod._ds_stage_ack_cost = MIN_STAGE_READY_DELAY
 mod._ds_stage_ack_samples = 0
 mod._ds_last_stage_ack = nil
 local decode_active = false
+-- 会话键 = 小游戏对象本身（引用比较）。别改回 tostring(x)：那是每帧新建字符串，
+-- 而且对象被回收后地址复用会让两个不同的小游戏"看起来"相等。
 local active_decode_key = nil
 local decode_completed = false
 local decode_previous_start_time = nil
@@ -226,7 +228,7 @@ end
 local function sample_decode_symbols(minigame)
 	local ds = mod._ds
 	if not ds then return end
-	local key = minigame and tostring(minigame) or nil
+	local key = minigame
 
 	if key and ds.key and ds.key ~= key then
 		mod._ds_submitted_stage = nil
@@ -270,7 +272,7 @@ local function sample_decode_symbols(minigame)
 end
 
 local function is_active_decode_symbols(minigame)
-	return decode_active and minigame ~= nil and active_decode_key == tostring(minigame)
+	return decode_active and minigame ~= nil and active_decode_key == minigame
 end
 
 local function ds_reset(reason)
@@ -489,7 +491,7 @@ mod:hook_safe("MinigameDecodeSymbols", "start", function(self, player)
 		mod._ds_release_until = 0
 		mod._ds_submit_time = nil
 		decode_active = true
-		active_decode_key = tostring(self)
+		active_decode_key = self
 		decode_completed = false
 		decode_waiting_for_sync = self._is_server ~= true
 	end
@@ -581,9 +583,9 @@ local function hook_decode_state_input(PlayerCharacterStateMinigame)
 			return func(self, t, fixed_frame, input_extension)
 		end
 
-		if active_decode_key ~= tostring(minigame) then
+		if active_decode_key ~= minigame then
 			if not decode_active then
-				active_decode_key = tostring(minigame)
+				active_decode_key = minigame
 			else
 				return func(self, t, fixed_frame, input_extension)
 			end

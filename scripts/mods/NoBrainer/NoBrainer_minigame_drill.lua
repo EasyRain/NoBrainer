@@ -3,6 +3,8 @@ local S = mod._S
 
 local MinigameSettings = require("scripts/settings/minigame/minigame_settings")
 local drill_active = false
+-- 会话键 = 小游戏对象本身（引用比较）。别改回 tostring(x)：那是新建字符串，
+-- 而且对象被回收后地址复用会让两个不同的小游戏"看起来"相等。
 local active_drill_key = nil
 local drill_completed = false
 local _drill_cleanup
@@ -53,7 +55,7 @@ local function _snapshot_fresh()
 end
 
 local function _is_active_drill_mg(mg)
-	return mg ~= nil and active_drill_key == tostring(mg)
+	return mg ~= nil and active_drill_key == mg
 end
 
 mod:hook_require("scripts/ui/views/scanner_display_view/minigame_drill_view", function(View)
@@ -141,7 +143,7 @@ local function _arm_drill_session(mg, restart_until)
 	mod._drill_submitted_stage = nil
 	mod._drill_submitted_until = 0
 	drill_active = true
-	active_drill_key = tostring(mg)
+	active_drill_key = mg
 	drill_completed = false
 	drill_stopped_key = nil
 	drill_stopped_until = 0
@@ -153,8 +155,8 @@ end
 mod:hook_safe("MinigameDrill", "start", function(self, player)
 	if not mod._is_local_minigame_player(player) then
 		if drill_active and _is_active_drill_mg(self)
-			or drill_restart_key and drill_restart_key == tostring(self)
-			or drill_stopped_key and drill_stopped_key == tostring(self)
+			or drill_restart_key and drill_restart_key == self
+			or drill_stopped_key and drill_stopped_key == self
 		then
 			_drill_cleanup("ownership_transferred")
 		end
@@ -168,7 +170,7 @@ mod:hook_safe("MinigameDrill", "start", function(self, player)
 	local now = mod._time("gameplay")
 	local quick_restart = self._is_server ~= true
 		and now ~= nil
-		and drill_stopped_key == tostring(self)
+		and drill_stopped_key == self
 		and now <= drill_stopped_until
 	local restart_until = quick_restart and now + DRILL_RESTART_RECOVERY_TIMEOUT or 0
 
@@ -228,7 +230,7 @@ _drill_cleanup = function(reason)
 end
 
 mod:hook_safe("MinigameDrill", "stop", function(self, ...)
-	local key = tostring(self)
+	local key = self
 	local active = _is_active_drill_mg(self)
 	local player = select(1, ...)
 	local arg_count = select("#", ...)
@@ -262,7 +264,7 @@ mod:hook_safe("MinigameDrill", "stop", function(self, ...)
 	end
 end)
 mod:hook_safe("MinigameDrill", "complete", function(self)
-	if _is_active_drill_mg(self) or drill_restart_key == tostring(self) then
+	if _is_active_drill_mg(self) or drill_restart_key == self then
 		_drill_cleanup("complete")
 	end
 end)
@@ -299,7 +301,7 @@ function mod._drill_rearm_from_state(state, t)
 
 	local mg = state and state._minigame
 	local player = state and state._player
-	if not mg or tostring(mg) ~= drill_restart_key then return end
+	if not mg or mg ~= drill_restart_key then return end
 	if mg._is_server == true or not mod._is_local_minigame_player(player) or not _scanner_view_active() then return end
 	if mg.is_completed and mg:is_completed() or not _is_gameplay(mg) then return end
 	local unit = mg._minigame_unit
@@ -336,7 +338,7 @@ end
 function mod._drill_sample(mg, allow_server_fallback)
 	local drill = mod._drill
 	if not drill then return end
-	local key = mg and tostring(mg) or nil
+	local key = mg
 
 	if key and drill.key and drill.key ~= key then
 		mod._drill_cooldown = 0
