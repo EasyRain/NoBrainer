@@ -12,6 +12,9 @@
 
 > Windows 上 git 默认的 TLS 后端 **schannel 可能卡死**（`ls-remote` 挂二十多秒报连不上，
 > 而 curl / gh 正常）。换成 OpenSSL 后端即可：`git config --global http.sslBackend openssl`。
+>
+> 所在网络直连 GitHub 不稳（`Recv failure: Connection was reset`）时，给 git 配一个 HTTP 代理再推：
+> `git config http.proxy http://<代理地址>:<端口>`（只对本仓库生效；删掉即恢复直连）。
 
 ## 一把跑完（改完代码 / 游戏更新后）
 
