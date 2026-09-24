@@ -279,6 +279,7 @@ local function _balance(action, result, source)
 	if not mod._bal_predictive_correction then return result end
 
 	local record_command = source == "player_unit_input" and MOVE_ACTIONS[action]
+	bal.diag_input = (bal.diag_input or 0) + 1
 	local correction_x, correction_y = mod._bal_predictive_correction(record_command)
 
 	if correction_x == nil then return result end

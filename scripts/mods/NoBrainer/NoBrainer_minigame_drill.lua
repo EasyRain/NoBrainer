@@ -151,6 +151,10 @@ local function _arm_drill_session(mg, restart_until)
 end
 
 mod:hook_safe("MinigameDrill", "start", function(self, player)
+	if mod._diag_on then
+		mod:echo("NoBrainer minigame start: MinigameDrill (local=%s is_server=%s)",
+			tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server))
+	end
 	if not mod._is_local_minigame_player(player) then
 		if drill_active and _is_active_drill_mg(self)
 			or drill_restart_key and drill_restart_key == tostring(self)

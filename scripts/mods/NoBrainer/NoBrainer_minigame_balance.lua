@@ -60,7 +60,12 @@ mod._bal = {
 	diag_stale = 0,    -- 输入闸门因新鲜度窗口到期而放手的次数
 	diag_timer = 0,
 	diag_shown_skewed = 0, diag_shown_reset = 0, diag_shown_stale = 0,  -- 上次打印时的累计值
+	diag_shown_samples = 0,
 	diag_run_skewed = 0, diag_run_reset = 0, diag_run_stale = 0,        -- 本轮小游戏开始时的累计值
+	-- 样本流：q_local = 视图里本地(服务器)取样，q_net = 收到服务器的 set_position，
+	-- samples = 真正进到过估计器的样本，input = NB 的输入路径真正发出过修正的次数
+	diag_samples = 0, diag_q_local = 0, diag_q_net = 0, diag_input = 0,
+	diag_run_samples = 0, diag_run_q_local = 0, diag_run_q_net = 0, diag_run_input = 0,
 }
 
 local st = mod._bal
@@ -233,6 +238,8 @@ end
 local function _process_predictive_sample()
 	if not st.pending_sample then return end
 
+	st.diag_samples = st.diag_samples + 1
+
 	local now = st.pending_time or mod._time("gameplay")
 	local x, y = st.pending_x, st.pending_y
 	st.pending_sample = false
@@ -354,6 +361,7 @@ mod:hook_safe("MinigameBalanceView", "_update_cursor", function(self)
 	local p = mg:position()
 
 	if mg._is_server and _is_active_balance_mg(mg) and not st.network_samples then
+		st.diag_q_local = st.diag_q_local + 1
 		_queue_predictive_sample(p.x, p.y, false)
 	end
 
@@ -362,6 +370,7 @@ end)
 
 mod:hook_safe("MinigameBalance", "set_position", function(self, x, y)
 	if balance_active and _is_active_balance_mg(self) then
+		st.diag_q_net = st.diag_q_net + 1
 		_queue_predictive_sample(x, y, true)
 	elseif balance_restart_mg == self and balance_restart_stop_seen then
 		local now = mod._time("gameplay")
@@ -377,37 +386,45 @@ mod:hook_safe("MinigameBalance", "set_position", function(self, x, y)
 end)
 
 -- 诊断输出。周期行只在"距上次打印有变化"时才写，所以空闲的小游戏不会刷屏。
+-- q=本地/网络两条取样路各取了多少，samples=真正进过估计器的样本数，in=输入路径发出过修正的次数。
 local function _diag_report(tag)
 	if not DIAGNOSTICS then return end
 	if st.diag_skewed == st.diag_shown_skewed
 		and st.diag_reset == st.diag_shown_reset
 		and st.diag_stale == st.diag_shown_stale
+		and st.diag_samples == st.diag_shown_samples
 	then
 		return
 	end
 	st.diag_shown_skewed = st.diag_skewed
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
-	mod:echo("NoBrainer balance diag%s: skewed=%d reset=%d stale=%d", tag or "",
+	st.diag_shown_samples = st.diag_samples
+	mod:echo("NoBrainer balance diag%s: q(local/net)=%d/%d samples=%d input=%d | skewed=%d reset=%d stale=%d",
+		tag or "", st.diag_q_local, st.diag_q_net, st.diag_samples, st.diag_input,
 		st.diag_skewed, st.diag_reset, st.diag_stale)
 end
 
--- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条。
--- 打印本轮增量 + 整局累计。
+-- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条
+-- （这里**无条件**打印，哪怕全是 0 —— "0 样本"本身就是最有用的结论）。
 local function _diag_report_run()
 	if not DIAGNOSTICS then return end
+	local run_q_local = st.diag_q_local - (st.diag_run_q_local or 0)
+	local run_q_net = st.diag_q_net - (st.diag_run_q_net or 0)
+	local run_samples = st.diag_samples - (st.diag_run_samples or 0)
+	local run_input = st.diag_input - (st.diag_run_input or 0)
 	local run_skewed = st.diag_skewed - (st.diag_run_skewed or 0)
 	local run_reset = st.diag_reset - (st.diag_run_reset or 0)
 	local run_stale = st.diag_stale - (st.diag_run_stale or 0)
-	if run_skewed == 0 and run_reset == 0 and run_stale == 0 then
-		return
-	end
+
 	st.diag_shown_skewed = st.diag_skewed
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
-	mod:echo("NoBrainer balance diag run: skewed=%d reset=%d stale=%d (total %d/%d/%d)",
+	st.diag_shown_samples = st.diag_samples
+	mod:echo("NoBrainer balance run end: q(local/net)=%d/%d samples=%d input=%d | run skewed=%d reset=%d stale=%d | total samples=%d skewed=%d reset=%d",
+		run_q_local, run_q_net, run_samples, run_input,
 		run_skewed, run_reset, run_stale,
-		st.diag_skewed, st.diag_reset, st.diag_stale)
+		st.diag_samples, st.diag_skewed, st.diag_reset)
 end
 
 local function on_update(dt)
@@ -450,6 +467,13 @@ local function _arm_balance_session(mg, restart_until, previous_x, previous_y, p
 	st.diag_run_skewed = st.diag_skewed
 	st.diag_run_reset = st.diag_reset
 	st.diag_run_stale = st.diag_stale
+	st.diag_run_q_local = st.diag_q_local
+	st.diag_run_q_net = st.diag_q_net
+	st.diag_run_samples = st.diag_samples
+	st.diag_run_input = st.diag_input
+	if DIAGNOSTICS then
+		mod:echo("NoBrainer balance ARM: is_server=%s mg=%s", tostring(mg and mg._is_server), tostring(mg ~= nil))
+	end
 	balance_active = true
 	active_balance_mg = mg
 	st.active = true
@@ -488,6 +512,13 @@ local function _arm_balance_session(mg, restart_until, previous_x, previous_y, p
 end
 
 mod:hook_safe("MinigameBalance", "start", function(self, player)
+	if DIAGNOSTICS then
+		mod:echo("NoBrainer minigame start: MinigameBalance (local=%s is_server=%s enable_balance=%s bal_active=%s)",
+			tostring(mod._is_local_minigame_player(player)),
+			tostring(self and self._is_server),
+			tostring(S("enable_balance")),
+			tostring(balance_active))
+	end
 	if not mod._is_local_minigame_player(player) then
 		if balance_active and _is_active_balance_mg(self)
 			or balance_restart_mg and balance_restart_mg == self
@@ -703,5 +734,10 @@ function mod._bal_predictive_correction(record_command)
 
 	return correction_x, correction_y
 end
+
+-- ===== 临时诊断（真机观察期用，量完删）=====
+-- 每个小游戏类的 start 钩子里各加一行打印，用来确认"哪种小游戏真的开过"。
+-- 这里只置一个共享开关，别的模块读它；不改任何逻辑。
+mod._diag_on = DIAGNOSTICS
 
 return true
