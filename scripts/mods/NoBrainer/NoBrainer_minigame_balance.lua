@@ -63,9 +63,11 @@ mod._bal = {
 	diag_shown_samples = 0,
 	diag_run_skewed = 0, diag_run_reset = 0, diag_run_stale = 0,        -- 本轮小游戏开始时的累计值
 	-- 样本流：q_local = 视图里本地(服务器)取样，q_net = 收到服务器的 set_position，
+	-- q_other = 收到位置但对象不是被 arm 的那个，cursor = 视图 _update_cursor 带着活跃小游戏跑过的帧数，
 	-- samples = 真正进到过估计器的样本，input = NB 的输入路径真正发出过修正的次数
-	diag_samples = 0, diag_q_local = 0, diag_q_net = 0, diag_input = 0,
-	diag_run_samples = 0, diag_run_q_local = 0, diag_run_q_net = 0, diag_run_input = 0,
+	diag_samples = 0, diag_q_local = 0, diag_q_net = 0, diag_q_other = 0, diag_cursor = 0, diag_input = 0,
+	diag_run_samples = 0, diag_run_q_local = 0, diag_run_q_net = 0, diag_run_q_other = 0,
+	diag_run_cursor = 0, diag_run_input = 0,
 }
 
 local st = mod._bal
@@ -363,6 +365,9 @@ mod:hook_safe("MinigameBalanceView", "_update_cursor", function(self)
 	if mg._is_server and _is_active_balance_mg(mg) and not st.network_samples then
 		st.diag_q_local = st.diag_q_local + 1
 		_queue_predictive_sample(p.x, p.y, false)
+	elseif _is_active_balance_mg(mg) then
+		-- 视图在跑、也被 arm 了，但本地取样被门挡掉（真机客户端上多半是 mg._is_server == false）
+		st.diag_cursor = st.diag_cursor + 1
 	end
 
 	return
@@ -372,15 +377,21 @@ mod:hook_safe("MinigameBalance", "set_position", function(self, x, y)
 	if balance_active and _is_active_balance_mg(self) then
 		st.diag_q_net = st.diag_q_net + 1
 		_queue_predictive_sample(x, y, true)
-	elseif balance_restart_mg == self and balance_restart_stop_seen then
-		local now = mod._time("gameplay")
-		if now and now >= balance_restart_stop_at and now <= balance_restart_until then
-			balance_restart_prev_x = balance_restart_sample_x
-			balance_restart_prev_y = balance_restart_sample_y
-			balance_restart_prev_at = balance_restart_sample_at
-			balance_restart_sample_x = x
-			balance_restart_sample_y = y
-			balance_restart_sample_at = now
+	else
+		if balance_active then
+			-- 收到位置了，但对象不是被 arm 的那个 —— 真机上如果 q_net=0 而这里是正数，就是身份不匹配
+			st.diag_q_other = st.diag_q_other + 1
+		end
+		if balance_restart_mg == self and balance_restart_stop_seen then
+			local now = mod._time("gameplay")
+			if now and now >= balance_restart_stop_at and now <= balance_restart_until then
+				balance_restart_prev_x = balance_restart_sample_x
+				balance_restart_prev_y = balance_restart_sample_y
+				balance_restart_prev_at = balance_restart_sample_at
+				balance_restart_sample_x = x
+				balance_restart_sample_y = y
+				balance_restart_sample_at = now
+			end
 		end
 	end
 end)
@@ -393,6 +404,7 @@ local function _diag_report(tag)
 		and st.diag_reset == st.diag_shown_reset
 		and st.diag_stale == st.diag_shown_stale
 		and st.diag_samples == st.diag_shown_samples
+		and st.diag_cursor == st.diag_shown_cursor
 	then
 		return
 	end
@@ -400,9 +412,10 @@ local function _diag_report(tag)
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
 	st.diag_shown_samples = st.diag_samples
-	mod:echo("NoBrainer balance diag%s: q(local/net)=%d/%d samples=%d input=%d | skewed=%d reset=%d stale=%d",
-		tag or "", st.diag_q_local, st.diag_q_net, st.diag_samples, st.diag_input,
-		st.diag_skewed, st.diag_reset, st.diag_stale)
+	st.diag_shown_cursor = st.diag_cursor
+	mod:echo("NoBrainer balance diag%s: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d | skewed=%d reset=%d stale=%d",
+		tag or "", st.diag_cursor, st.diag_q_local, st.diag_q_net, st.diag_q_other,
+		st.diag_samples, st.diag_input, st.diag_skewed, st.diag_reset, st.diag_stale)
 end
 
 -- 小游戏收尾时的一行：平衡小游戏常常只有几秒，周期行未必赶得上，所以结束时一定补一条
@@ -411,6 +424,8 @@ local function _diag_report_run()
 	if not DIAGNOSTICS then return end
 	local run_q_local = st.diag_q_local - (st.diag_run_q_local or 0)
 	local run_q_net = st.diag_q_net - (st.diag_run_q_net or 0)
+	local run_q_other = st.diag_q_other - (st.diag_run_q_other or 0)
+	local run_cursor = st.diag_cursor - (st.diag_run_cursor or 0)
 	local run_samples = st.diag_samples - (st.diag_run_samples or 0)
 	local run_input = st.diag_input - (st.diag_run_input or 0)
 	local run_skewed = st.diag_skewed - (st.diag_run_skewed or 0)
@@ -421,8 +436,9 @@ local function _diag_report_run()
 	st.diag_shown_reset = st.diag_reset
 	st.diag_shown_stale = st.diag_stale
 	st.diag_shown_samples = st.diag_samples
-	mod:echo("NoBrainer balance run end: q(local/net)=%d/%d samples=%d input=%d | run skewed=%d reset=%d stale=%d | total samples=%d skewed=%d reset=%d",
-		run_q_local, run_q_net, run_samples, run_input,
+	st.diag_shown_cursor = st.diag_cursor
+	mod:echo("NoBrainer balance run end: cursor=%d q(local/net/other)=%d/%d/%d samples=%d input=%d | run skewed=%d reset=%d stale=%d | total samples=%d skewed=%d reset=%d",
+		run_cursor, run_q_local, run_q_net, run_q_other, run_samples, run_input,
 		run_skewed, run_reset, run_stale,
 		st.diag_samples, st.diag_skewed, st.diag_reset)
 end
@@ -469,6 +485,8 @@ local function _arm_balance_session(mg, restart_until, previous_x, previous_y, p
 	st.diag_run_stale = st.diag_stale
 	st.diag_run_q_local = st.diag_q_local
 	st.diag_run_q_net = st.diag_q_net
+	st.diag_run_q_other = st.diag_q_other
+	st.diag_run_cursor = st.diag_cursor
 	st.diag_run_samples = st.diag_samples
 	st.diag_run_input = st.diag_input
 	if DIAGNOSTICS then
