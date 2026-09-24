@@ -44,6 +44,12 @@ local function gameplay_time()
     return time and time:has_timer("gameplay") and time:time("gameplay") or nil
 end
 
+local function nobrainer()
+    -- 注意：NoBrainer 的状态在它自己的表上（get_mod("NoBrainer")._bal），不是本 mod 的 _bal。
+    -- 第一版做成练习台时读错了表，于是 diag 永远是 nil —— 这一句是那个 bug 的修复。
+    return get_mod("NoBrainer")
+end
+
 local function local_player()
     local players = Managers.player
     return players and players:local_player_safe(1) or nil
@@ -101,6 +107,13 @@ local function start_practice(type_name)
     log("  initial state=%s, position=%s, unit=%s", tostring(state_ok and state or "?"),
         tostring(select(1, pcall(mg.position, mg))), tostring(unit))
 
+    local nb = nobrainer()
+    local balance_state = nb and nb._bal
+    log("  NoBrainer: mod=%s enable_balance=%s balance_active=%s observer_ready=%s",
+        tostring(nb ~= nil), tostring(nb and nb:get("enable_balance")),
+        tostring(balance_state and balance_state.active),
+        tostring(balance_state and balance_state.observer_ready))
+
     session = { type = type_name, mg = mg, frames = 0, started_at = gameplay_time() }
     last_inject_at, last_axis_at = 0, 0
     injected_skew, injected_ring = 0, 0
@@ -138,7 +151,8 @@ mod.update = function(dt)
 
     -- 4) 注入：把 NoBrainer 的 estimate_time 往前推 → 下一条收据的"测量时间"落在它之前，
     --    即真实世界里 RTT 变化造成的"样本时间没前进"。修复①就是为这种情况准备的。
-    local balance = mod._bal
+    local nb = nobrainer()
+    local balance = nb and nb._bal
     if inject and balance then
         if t >= last_inject_at + 2.0 then
             last_inject_at = t
@@ -147,12 +161,12 @@ mod.update = function(dt)
                 injected_skew = injected_skew + 1
             end
             -- 命令环：先给一个大 tick 记一条"未来"的命令，再缩小 tick 并立刻提交一条更早的
-            if type(balance.tick_interval) == "number" and mod._bal_predictive_correction then
+            if type(balance.tick_interval) == "number" and nb._bal_predictive_correction then
                 balance.tick_interval = 0.1
-                pcall(mod._bal_predictive_correction, true)
+                pcall(nb._bal_predictive_correction, true)
                 balance.tick_interval = 1 / 52
-                pcall(mod._bal_predictive_correction, false)
-                pcall(mod._bal_predictive_correction, true)
+                pcall(nb._bal_predictive_correction, false)
+                pcall(nb._bal_predictive_correction, true)
                 injected_ring = injected_ring + 1
             end
         end
