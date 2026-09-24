@@ -41,6 +41,8 @@ mod._time = function() return NOW end
 mod._S = function(key) return true end
 mod.info = function(_, fmt, ...) messages[#messages + 1] = string.format(tostring(fmt), ...) end
 mod.echo = function(_, fmt, ...) messages[#messages + 1] = string.format(tostring(fmt), ...) end
+-- 调试日志（DMF 选项 "Write Debug Log"）关闭时的真实行为：什么都不做
+mod._debug = function() end
 mod.warning = mod.info
 mod.is_enabled = function() return true end
 mod.hook_safe = function(_, class, name, fn)

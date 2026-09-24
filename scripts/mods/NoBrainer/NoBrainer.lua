@@ -16,6 +16,19 @@ mod._clear_cache = function()
     end
 end
 
+-- 调试日志（DMF 选项里的 "Write Debug Log"，默认关闭）。
+-- 每局小游戏的关键事件写一行到**日志文件**（mod:info 默认不上屏），前缀固定为
+-- "NoBrainer debug:"，方便 `Select-String 'NoBrainer debug'` 一把捞出来。
+-- 只影响日志，不改变任何行为；量完记得关掉。
+mod._debug = function(fmt, ...)
+    if not mod._S("enable_debug_messages") then
+        return
+    end
+
+    local ok, text = pcall(string.format, fmt, ...)
+    mod:info("NoBrainer debug: " .. (ok and text or fmt))
+end
+
 mod._time = function(clock)
     local time_manager = Managers.time
     local timer_name = clock or "gameplay"

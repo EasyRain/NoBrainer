@@ -396,6 +396,8 @@ local function on_update(dt)
 end
 
 local function _arm_balance_session(mg, restart_until, previous_x, previous_y, previous_at, sample_x, sample_y, sample_at)
+	mod._debug("balance: armed (server=%s recovery=%s)",
+		tostring(mg and mg._is_server), tostring(sample_at ~= nil))
 	_reset_balance_tracking()
 	balance_active = true
 	active_balance_mg = mg
@@ -435,6 +437,9 @@ local function _arm_balance_session(mg, restart_until, previous_x, previous_y, p
 end
 
 mod:hook_safe("MinigameBalance", "start", function(self, player)
+	mod._debug("balance: start (local=%s server=%s auto=%s)",
+		tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server),
+		tostring(S("enable_balance")))
 	if not mod._is_local_minigame_player(player) then
 		if balance_active and _is_active_balance_mg(self)
 			or balance_restart_mg and balance_restart_mg == self
@@ -466,6 +471,8 @@ mod:hook_safe("MinigameBalance", "start", function(self, player)
 end)
 
 _balance_cleanup = function()
+	-- 只报累计计数（本次启动以来）：skewed = 样本时间没前进被丢弃的次数，reset = 估计器被重置的次数
+	mod._debug("balance: cleanup (total skewed=%d reset=%d)", st.diag_skewed or 0, st.diag_reset or 0)
 	balance_active = false
 	active_balance_mg = nil
 	balance_stopped_mg = nil
@@ -485,6 +492,7 @@ _balance_cleanup = function()
 end
 
 mod:hook_safe("MinigameBalance", "stop", function(self, ...)
+	mod._debug("balance: stop (was_active=%s)", tostring(_is_active_balance_mg(self)))
 	local key = self
 	local active = _is_active_balance_mg(self)
 	local player = select(1, ...)

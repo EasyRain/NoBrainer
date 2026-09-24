@@ -436,6 +436,7 @@ local function submit_decode(now)
 	mod._ds_press_until = now + PRESS_DURATION
 	mod._ds_release_until = mod._ds_press_until + RELEASE_DURATION
 	mod._ds_submit_time = now
+	mod._debug("decode_symbols: submit stage %s", tostring(stage))
 end
 
 looks_like_decode_symbols = function(minigame)
@@ -469,6 +470,9 @@ function mod._ds_input(action, result, source)
 end
 
 mod:hook_safe("MinigameDecodeSymbols", "start", function(self, player)
+	mod._debug("decode_symbols: start (local=%s server=%s auto=%s highlight=%s)",
+		tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server),
+		tostring(S("enable_decode_auto")), tostring(S("enable_decode_highlight")))
 	if not mod._is_local_minigame_player(player) then
 		if mod._ds_reroll_abort then
 			mod._ds_reroll_abort(self)
@@ -501,6 +505,8 @@ mod:hook_safe("MinigameDecodeSymbols", "start", function(self, player)
 	end
 end)
 mod:hook_safe("MinigameDecodeSymbols", "stop", function(self, stop_arg)
+	mod._debug("decode_symbols: stop (completed=%s was_active=%s)",
+		tostring(decode_completed), tostring(is_active_decode_symbols(self)))
 	if mod._ds_reroll_stop then
 		mod._ds_reroll_stop(self, stop_arg)
 	end
@@ -510,6 +516,7 @@ mod:hook_safe("MinigameDecodeSymbols", "stop", function(self, stop_arg)
 end)
 
 mod:hook_safe("MinigameDecodeSymbols", "complete", function(self)
+	mod._debug("decode_symbols: complete")
 	if mod._ds_reroll_complete then
 		mod._ds_reroll_complete(self)
 	end

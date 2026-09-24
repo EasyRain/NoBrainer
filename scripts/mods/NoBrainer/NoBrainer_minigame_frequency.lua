@@ -381,6 +381,9 @@ local function _arm_frequency_session(mg, restart_until)
 end
 
 mod:hook_safe("MinigameFrequency", "start", function(self, player)
+	mod._debug("frequency: start (local=%s server=%s auto=%s highlight=%s)",
+		tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server),
+		tostring(S("enable_frequency_auto")), tostring(S("enable_frequency_highlight")))
 	if not mod._is_local_minigame_player(player) then
 		if frequency_active and _is_active_frequency_mg(self)
 			or frequency_restart_key and frequency_restart_key == self
@@ -412,6 +415,7 @@ mod:hook_safe("MinigameFrequency", "start", function(self, player)
 end)
 
 mod:hook_safe("MinigameFrequency", "stop", function(self, ...)
+	mod._debug("frequency: stop (was_active=%s completed=%s)", tostring(_is_active_frequency_mg(self)), tostring(frequency_completed))
 	local key = self
 	local active = _is_active_frequency_mg(self)
 	local player = select(1, ...)
@@ -447,6 +451,7 @@ mod:hook_safe("MinigameFrequency", "stop", function(self, ...)
 	end
 end)
 mod:hook_safe("MinigameFrequency", "complete", function(self)
+	mod._debug("frequency: complete")
 	if _is_active_frequency_mg(self) or frequency_restart_key == self then
 		_freq_cleanup("complete")
 	end

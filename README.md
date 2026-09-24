@@ -31,6 +31,7 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 | 命令环单调钳制 | **BetterBrainer**（`balance.lua:59`，`record()` 里的 `math.max`） | `_record_command`：晚到/重复的 `apply_time` **覆盖环头**而不是追加 —— `_command_at` 从 head 往回扫、假定时间递减，非单调会取到过期指令。 |
 | 会话键用对象身份 | 本项目（BetterBrainer 仍用 `tostring`） | 五个模块共 41 处 `tostring(mg)` / `tostring(self)` → 引用比较。这些 `_is_active_*` 是从**每帧钩子**里调的，原来每帧都在新建字符串；顺带避免对象回收后地址复用导致"两个不同小游戏看起来相等"。 |
 | 两个计数器 | 本项目 | `diag_skewed` / `diag_reset` 纯计数、**运行时不打印**，只给离线冒烟测试断言用。 |
+| 调试日志开关 | 本项目（把上游遗留的**死设置** `enable_debug_messages` 接上） | DMF 选项里新增 **Debug → Write Debug Log**，**默认关闭**。打开后每局小游戏的关键事件写一行到**游戏日志文件**（不上屏、不改变行为），固定前缀 `NoBrainer debug:`：每种小游戏各报 开始 / 结束 / 提交，Train Balance 另外报累计 `skewed` / `reset`。反馈问题或维护排查时打开，量完关掉。 |
 
 ## 真机实测结论（别再重复劳动）
 

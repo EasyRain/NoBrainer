@@ -608,6 +608,9 @@ local function _is_teardown_stop_error(err)
 end
 
 mod:hook_safe("MinigameDecodeSearch", "start", function(self, player)
+	mod._debug("decode_search: start (local=%s server=%s auto=%s highlight=%s)",
+		tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server),
+		tostring(S("enable_expedition_auto_solve")), tostring(S("enable_matching")))
 	if not mod._is_local_minigame_player(player) then
 		if search_active and _is_active_search_mg(self)
 			or search_restart_key and search_restart_key == self
@@ -623,6 +626,7 @@ mod:hook_safe("MinigameDecodeSearch", "start", function(self, player)
 	end
 end)
 mod:hook("MinigameDecodeSearch", "stop", function(func, self, ...)
+	mod._debug("decode_search: stop (was_active=%s completed=%s)", tostring(_is_active_search_mg(self)), tostring(search_completed))
 	local unit = self and self._minigame_unit
 	local active = _is_active_search_mg(self)
 	local cleanup_reason = active and not search_completed and "stop" or nil
@@ -661,6 +665,7 @@ mod:hook("MinigameDecodeSearch", "stop", function(func, self, ...)
 	end
 end)
 mod:hook_safe("MinigameDecodeSearch", "complete", function(self)
+	mod._debug("decode_search: complete")
 	if _is_active_search_mg(self) or search_restart_key == self then
 		_exp_cleanup("complete")
 	end

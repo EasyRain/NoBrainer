@@ -140,6 +140,7 @@ local function _expedition(action, result)
 		mod._exp_release_until = mod._exp_press_until + 0.12
 		mod._exp_submitted_stage = stage
 		mod._exp_submitted_until = now + 1.2
+		mod._debug("decode_search: submit stage %s", tostring(stage))
 		return true
 	end
 	return result
@@ -184,6 +185,7 @@ local function _drill(action, result, source)
 		mod._drill_release_until = mod._drill_press_until + 0.12
 		mod._drill_submitted_stage = stage
 		mod._drill_submitted_until = now + (mod._drill_submit_timeout or 1.2)
+		mod._debug("drill: submit stage %s", tostring(stage))
 		return true
 	end
 
@@ -238,6 +240,7 @@ local function _frequency(action, result)
 		if result then return result end
 
 		if mod._freq_try_submit and mod._freq_try_submit(now) then
+			mod._debug("frequency: submit")
 			return true
 		end
 

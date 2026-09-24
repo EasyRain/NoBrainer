@@ -153,6 +153,9 @@ local function _arm_drill_session(mg, restart_until)
 end
 
 mod:hook_safe("MinigameDrill", "start", function(self, player)
+	mod._debug("drill: start (local=%s server=%s auto=%s highlight=%s)",
+		tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server),
+		tostring(S("enable_drill_auto")), tostring(S("enable_drill")))
 	if not mod._is_local_minigame_player(player) then
 		if drill_active and _is_active_drill_mg(self)
 			or drill_restart_key and drill_restart_key == self
@@ -230,6 +233,7 @@ _drill_cleanup = function(reason)
 end
 
 mod:hook_safe("MinigameDrill", "stop", function(self, ...)
+	mod._debug("drill: stop (was_active=%s completed=%s)", tostring(_is_active_drill_mg(self)), tostring(drill_completed))
 	local key = self
 	local active = _is_active_drill_mg(self)
 	local player = select(1, ...)
@@ -264,6 +268,7 @@ mod:hook_safe("MinigameDrill", "stop", function(self, ...)
 	end
 end)
 mod:hook_safe("MinigameDrill", "complete", function(self)
+	mod._debug("drill: complete")
 	if _is_active_drill_mg(self) or drill_restart_key == self then
 		_drill_cleanup("complete")
 	end

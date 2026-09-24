@@ -62,6 +62,10 @@ local localizations = {
 	drill_solve_speed         = { en = "Auto-Solve Speed", ["zh-tw"] = "自動解題速度", ["zh-cn"] = "自动解题速度", ru = "Скорость авторешения" },
 	drill_solve_speed_tooltip = { en = "Auto-solve pace (1=normal manual pace, 5=fastest). Every speed uses the same precise solver.", ["zh-tw"] = "自動解題速度（1＝一般手動速度，5＝最快）。所有速度都使用相同的精準解題器。", ["zh-cn"] = "自动解题速度（1＝一般手动速度，5＝最快）。所有速度都使用相同的精准解题器。", ru = "Темп авторешения (1=обычный ручной темп, 5=самый быстрый). Все скорости используют один и тот же точный решатель." },
 
+	debug_group               = { en = "Debug", ["zh-tw"] = "除錯", ["zh-cn"] = "调试", ru = "Отладка" },
+	enable_debug_messages     = { en = "Write Debug Log", ["zh-tw"] = "寫入除錯日誌", ["zh-cn"] = "写入调试日志", ru = "Записывать отладочный журнал" },
+	enable_debug_messages_tooltip = { en = "Appends one line per minigame event to the game log file (never shown on screen), which is what to enable when reporting a problem. Off by default and it does not change what the mod does.", ["zh-tw"] = "每次小遊戲事件在遊戲日誌檔追加一行（不會顯示在畫面上），回報問題時開這個。預設關閉，不影響 mod 的行為。", ["zh-cn"] = "每次小游戏事件在游戏日志文件里追加一行（不会显示在画面上），反馈问题时就开这个。默认关闭，不影响 mod 的行为。", ru = "Добавляет по одной строке на каждое событие мини-игры в файл журнала игры (на экран не выводится) - включайте это при сообщении о проблеме. По умолчанию выключено и не меняет поведение мода." },
+
 }
 
 local language = mod:get("language")

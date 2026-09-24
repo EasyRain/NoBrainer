@@ -193,6 +193,20 @@ return {
 				},
 			},
 
+			{
+				setting_id  = "debug_group",
+				type        = "group",
+				title       = "debug_group",
+				sub_widgets = {
+					{
+						setting_id    = "enable_debug_messages",
+						type          = "checkbox",
+						default_value = false,
+						tooltip       = "enable_debug_messages_tooltip",
+					},
+				},
+			},
+
 		},
 	},
 }
