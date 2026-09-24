@@ -266,11 +266,7 @@ local function _balance(action, result, source)
 	if not _is_movement_action(action) then return result end
 	if not S("enable_balance") then return result end
 	local bal = mod._bal
-	if not bal or not bal.active or not bal.enabled then
-		return result
-	end
-	if bal.timer <= 0 then
-		bal.diag_stale = (bal.diag_stale or 0) + 1
+	if not bal or not bal.active or bal.timer <= 0 or not bal.enabled then
 		return result
 	end
 	if not _minigame_view_active() then
@@ -279,7 +275,6 @@ local function _balance(action, result, source)
 	if not mod._bal_predictive_correction then return result end
 
 	local record_command = source == "player_unit_input" and MOVE_ACTIONS[action]
-	bal.diag_input = (bal.diag_input or 0) + 1
 	local correction_x, correction_y = mod._bal_predictive_correction(record_command)
 
 	if correction_x == nil then return result end

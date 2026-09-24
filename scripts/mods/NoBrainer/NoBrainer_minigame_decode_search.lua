@@ -606,10 +606,6 @@ local function _is_teardown_stop_error(err)
 end
 
 mod:hook_safe("MinigameDecodeSearch", "start", function(self, player)
-	if mod._diag_on then
-		mod:echo("NoBrainer minigame start: MinigameDecodeSearch (local=%s is_server=%s)",
-			tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server))
-	end
 	if not mod._is_local_minigame_player(player) then
 		if search_active and _is_active_search_mg(self)
 			or search_restart_key and search_restart_key == tostring(self)

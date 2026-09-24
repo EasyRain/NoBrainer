@@ -467,10 +467,6 @@ function mod._ds_input(action, result, source)
 end
 
 mod:hook_safe("MinigameDecodeSymbols", "start", function(self, player)
-	if mod._diag_on then
-		mod:echo("NoBrainer minigame start: MinigameDecodeSymbols (local=%s is_server=%s)",
-			tostring(mod._is_local_minigame_player(player)), tostring(self and self._is_server))
-	end
 	if not mod._is_local_minigame_player(player) then
 		if mod._ds_reroll_abort then
 			mod._ds_reroll_abort(self)
