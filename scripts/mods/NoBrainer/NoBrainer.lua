@@ -246,3 +246,18 @@ mod.on_unload = function(exit_game)
 	_fire(mod._on_unload, exit_game)
 	mod._clear_cache()
 end
+
+-- 调试用：把**游戏真正设置起来的小游戏类型**记一行（含 NoBrainer 不处理的类型，
+-- 例如 expedition_map）。只在类型变化时打，避免每次掏出占卜仪都刷一行。
+-- 开了 "Write Debug Log" 才写日志，平时只是一次比较。
+local _last_minigame_type = nil
+mod:hook_require("scripts/extension_systems/minigame/minigame_extension", function(MinigameExtension)
+	mod:hook_safe(MinigameExtension, "setup_from_component", function(_, minigame_type)
+		if minigame_type == _last_minigame_type then
+			return
+		end
+
+		_last_minigame_type = minigame_type
+		mod._debug("game set up minigame: %s", tostring(minigame_type))
+	end)
+end)
