@@ -22,7 +22,7 @@
 powershell -File tools\run_checks.ps1
 ```
 
-它会依次跑：① balance 的离线冒烟测试；② 钩子体检（对最新日志）。任何一项不过就以非 0 退出。
+它会依次跑三项：① balance 的离线冒烟测试；② 钩子体检（对最新日志）；③ 设置项体检。任何一项不过就以非 0 退出。
 
 > Windows PowerShell 5.1 会把**没有 BOM 的 UTF-8 当 ANSI 读**：中文变乱码，甚至报错。
 > 仓库里的 `.ps1` 都带 UTF-8 BOM；用编辑器改过之后若 BOM 丢了，按下面补回来：
@@ -30,6 +30,39 @@ powershell -File tools\run_checks.ps1
 > $p='tools\run_checks.ps1'; $t=[IO.File]::ReadAllText($p,(New-Object Text.UTF8Encoding($false)))
 > [IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($true)))
 > ```
+
+## 设置项体检（`check_settings.py`）
+
+```powershell
+python tools\check_settings.py
+```
+
+`NoBrainer_data.lua` 里引用的每个 `setting_id` / `tooltip` / `title` / 选项文本，本地化文件里都得有。
+**缺键不会报错**，DMF 只是把原始 key（例如 `enable_debug_messages_tooltip`）显示在选项界面上 ——
+所以加设置、改文案之后跑一下就不会漏。顺带会列出"定义了但没人引用"的键，方便清理。
+
+## 调试日志开关（`Debug → Write Debug Log`）
+
+DMF 选项 → NoBrainer → **Debug → Write Debug Log**（**默认关闭**）。打开后每局小游戏的关键事件会
+写一行到**游戏日志文件**（走 `mod:info`，**不上屏、不改变任何行为**），固定前缀 `NoBrainer debug:`：
+
+```powershell
+Select-String "$env:APPDATA\Fatshark\Darktide\console_logs\console-*.log" -Pattern 'NoBrainer debug' |
+    Select-Object -Last 40
+```
+
+会看到这些形态（时间戳是日志自带的）：
+
+| 行 | 含义 |
+|---|---|
+| `minigame audit: registered = …` / `NOT registered (dead content) = …` | 启动时核对：游戏声明的小游戏类型里，哪些真的在 `minigame_classes` 注册过 |
+| `game set up minigame: <type>` | 游戏给某个组件设置小游戏类型时（类型变化才打） |
+| `<type>: start (local=… server=… auto=… highlight=…)` | 五种小游戏各自的开始；`local=false` 表示那是**队友**的小游戏（钩子对远端对象也会触发，属正常） |
+| `<type>: submit stage N` | NoBrainer 真正按下交互键的那一下（`frequency` 无 stage） |
+| `<type>: complete` / `<type>: stop (was_active=… completed=…)` | 结束。`start` 之后立刻 `stop` 且 `completed=false` = **被小怪打中强制中断**，不是故障 |
+| `balance: armed` / `balance: cleanup (total skewed=… reset=…)` | Train Balance 的会话与累计计数 |
+
+> 量完记得关掉。日常游玩不需要它（关掉时这些代码只是几次判断，零输出）。
 
 ## 离线：改 balance / 相关逻辑前后先跑这个
 
@@ -125,8 +158,15 @@ python tools\check_hooks.py <log 路径>
 | `ERROR` | Darktide Mod Framework 报了 "trying to hook … that doesn't exist" → 方法被改名了 |
 | `MISSING` | 日志里完全没出现（这份日志没跑到那一段，或钩子压根没注册） |
 
-退出码：全 OK = 0，否则 1。2026-09-24 两份真机日志都是 **39/39 OK**（其中 7 个是延迟后挂上的：
+退出码：全 OK = 0，否则 1。2026-09-24 三把真机的长日志是 **40/40 OK**（其中 7 个是延迟后挂上的：
 `MinigameSystem`、`MinigameBalanceView`、`AuspexScanningEffects`）。
+
+> **别拿"刚重启、只在枢纽待了几十秒"的日志判故障。** 延迟钩子和按路径注册的钩子都要等游戏把对应
+> 模块 `require` 进来才会出现在日志里（视图、`MinigameSystem`、`AuspexScanningEffects` 都是进游戏后
+> 才有），所以短日志必然报一堆 `DEAD`/`MISSING` —— 那是"还没跑到"。
+> 脚本开头会打印 `日志跨度 X 分 Y 秒，进图标记 N 次`；跨度 < 180 秒或进图标记为 0 时会打 ⚠️，
+> 并且**不再判失败**（只有 `ERROR` 行在任何长度下都算真问题）。
+> 也可以手动指定日志：`python tools\check_hooks.py <日志路径>`。
 
 **为什么不用 hook_require 全面替换类名式钩子（O6 的结论）**：读 Darktide Mod Framework（`modules/core/hooks.lua`）后确认，
 类名式钩子并不是"查全局变量"，而是 `rawget(_G, name)` → `rawget(_G.CLASS, name)`（游戏的类登记表），
