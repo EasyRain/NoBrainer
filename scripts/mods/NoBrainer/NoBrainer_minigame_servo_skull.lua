@@ -69,12 +69,26 @@ local function has_line_of_sight(physics_world, from_position, to_position)
 	return not hit or hit_distance >= distance - LINE_OF_SIGHT_TARGET_TOLERANCE
 end
 
+-- 1.13 删掉了 SmartTagExtension:is_particular_target_type()，目标类型只剩下扩展自己的 _target_type
+-- 字段。两版都照顾：有旧方法就走旧方法（1.12 的实现只有一行 `return self._target_type == other`，
+-- 见 scripts/extension_systems/smart_tag/smart_tag_extension.lua），没有就直接比字段 —— 语义逐字等价。
+-- 判据：在 1.13 全部 10552 个 Lua 字节码文件里 grep 该方法名 = 0 命中，即 API 被删而非调用姿势错。
+local function is_smart_tag_target_type(extension, target_type)
+	local checker = extension.is_particular_target_type
+
+	if checker then
+		return checker(extension, target_type)
+	end
+
+	return extension._target_type == target_type
+end
+
 local function nearest_hack_target(smart_tag_system, player_unit, player_position, command_range_sq, require_line_of_sight, physics_world, line_of_sight_origin)
 	local nearest_unit
 	local nearest_distance_sq = command_range_sq
 
 	for unit, extension in pairs(smart_tag_system._unit_extension_data) do
-		if unit ~= player_unit and Unit.alive(unit) and extension:is_particular_target_type("hack") then
+		if unit ~= player_unit and Unit.alive(unit) and is_smart_tag_target_type(extension, "hack") then
 			local template = extension:contextual_tag_template(player_unit, true)
 
 			if template and template.name == COMPANION_HACK_TAG then
