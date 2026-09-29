@@ -191,3 +191,30 @@ scripts/settings/minigame/minigame_settings
 ```
 
 （`minigame_servo_skull` / `minigame_manager` **不存在**，别照名字猜。）
+
+## 游戏 API 体检（`check_game_api.py`）
+
+大版本更新后用来查"mod 引用的游戏 API 是不是被删/改名了"。它拿**新旧两版游戏树**对比：
+
+```powershell
+# 1) 解出新版的 Lua 字节码（1.13 实测：10552 文件 / 136 MB / 约 4 秒）
+$limn = 'tools\limn\0.7.2\limn-0.7.2-x86_64-pc-windows-msvc\limn.exe'
+& $limn -i '<Darktide 安装目录>\bundle' -o .dtsrc\113-bytecode lua   # ⚠️ 不要加 -c extract-lua-source
+# 2) 跑审计（旧版树：<工作区>\game-data\source\Darktide-Source-Code）
+python tools\check_game_api.py --game-tree .dtsrc\113-bytecode --old-tree game-data\source\Darktide-Source-Code
+```
+
+查三样，证据都是"在整棵树里 grep 这个名字，**0 命中 = 已删除**"（LuaJIT 字节码里字符串常量是明文）：
+
+1. `require` / `mod:hook_require` 的**路径**在新版树里是否还存在；
+2. 按类名挂钩的**类名 + 方法名**是否还出现；
+3. 源码里所有 `:方法(` 形式的调用：**新版 0 命中、旧版有命中 = 确认被删**。
+   1.13 删掉 `SmartTagExtension:is_particular_target_type()` 就属于这一类，工具能独立复现出来。
+
+⚠️ **它覆盖不到的地方**（仍要靠实测日志）：引擎原生 API（`Unit.` / `World.` 这类不在 Lua 树里）、
+字段结构（`self._xxx` 的含义）、以及**方法还在但语义/签名变了**的情况（例如 1.13 把能力系统从
+"冷却时间戳"改成"资源条"）。所以要配合 `check_hooks.py` + 一局真机日志一起判断。
+
+> 已知坑：工具第一版用交替正则扫树，短名字会把长名字的开头吃掉（`MinigameBalance` 吃掉
+> `MinigameBalanceView`），于是把好钩子误报成"类名 0 命中"。现在按**长名字优先**排序，
+> 改动这里时别再退回字典序。

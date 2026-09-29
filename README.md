@@ -73,6 +73,8 @@ NoBrainer 是一个 Darktide Mod Framework 小游戏辅助 mod。它已被 Nexus
 | `tools/run_checks.ps1` | 一把跑完：离线冒烟测试 + 钩子体检 |
 | `tools/smoke_balance.lua` | 用 LuaJIT + 游戏 API 桩在游戏外跑 balance 模块，14 条断言 |
 | `tools/check_hooks.py` | 把仓库里注册的每个钩子跟真机日志核对（`OK / DEAD / ERROR / MISSING`），游戏更新后跑一次就知道哪块废了 |
+| `tools/check_game_api.py` | 游戏大版本更新后，拿**新旧两版游戏树**对比：mod 引用的模块路径、hook 目标、`:方法(` 调用里有没有被删掉的 API（1.13 删 `is_particular_target_type` 就是这类） |
+| `tools/check_settings.py` | 查设置项与本地化键是否对得上（缺键只会让选项界面显示原始 key，不报错） |
 | `tools/README.md` | 上面这些的用法、已验证的游戏 API/模块路径、已知结论与坑 |
 | `tools/MinigameProbe`、`tools/MinigamePractice` | 进游戏用的探针 / 无头练习台（平时**不装**，需要时再装回去） |
 
